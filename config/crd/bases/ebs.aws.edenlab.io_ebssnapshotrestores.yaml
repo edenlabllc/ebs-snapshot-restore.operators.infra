@@ -1,0 +1,391 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: ebssnapshotrestores.ebs.aws.edenlab.io
+spec:
+  group: ebs.aws.edenlab.io
+  names:
+    kind: EBSSnapshotRestore
+    listKind: EBSSnapshotRestoreList
+    plural: ebssnapshotrestores
+    singular: ebssnapshotrestore
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: PHASE
+      type: string
+    - jsonPath: .status.activePlan
+      name: ACTIVE-PLAN
+      type: string
+    - jsonPath: .status.lastUpdated
+      name: LAST-UPDATED
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: EBSSnapshotRestore is the Schema for the ebssnapshotrestores
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of EBSSnapshotRestore
+            properties:
+              restorePlans:
+                additionalProperties:
+                  properties:
+                    clusters:
+                      description: |-
+                        Clusters defines the list of StatefulSet workloads to restore.
+                        Each cluster entry describes a target StatefulSet and its associated PVC snapshots.
+                      items:
+                        properties:
+                          claimSelector:
+                            description: |-
+                              ClaimSelector is a label selector used to identify PVCs associated with this target.
+                              Required for StatefulSet targets. Not needed for Deployments.
+                            properties:
+                              matchExpressions:
+                                description: matchExpressions is a list of label selector
+                                  requirements. The requirements are ANDed.
+                                items:
+                                  description: |-
+                                    A label selector requirement is a selector that contains values, a key, and an operator that
+                                    relates the key and values.
+                                  properties:
+                                    key:
+                                      description: key is the label key that the selector
+                                        applies to.
+                                      type: string
+                                    operator:
+                                      description: |-
+                                        operator represents a key's relationship to a set of values.
+                                        Valid operators are In, NotIn, Exists and DoesNotExist.
+                                      type: string
+                                    values:
+                                      description: |-
+                                        values is an array of string values. If the operator is In or NotIn,
+                                        the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                        the values array must be empty. This array is replaced during a strategic
+                                        merge patch.
+                                      items:
+                                        type: string
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  required:
+                                  - key
+                                  - operator
+                                  type: object
+                                type: array
+                                x-kubernetes-list-type: atomic
+                              matchLabels:
+                                additionalProperties:
+                                  type: string
+                                description: |-
+                                  matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                  map is equivalent to an element of matchExpressions, whose key field is "key", the
+                                  operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                type: object
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          name:
+                            description: Name is the name of the target workload (StatefulSet
+                              or Deployment).
+                            type: string
+                          namespace:
+                            description: Namespace is the Kubernetes namespace where
+                              the target workload resides.
+                            type: string
+                          replicas:
+                            description: |-
+                              Replicas is the desired number of replicas to restore the workload to
+                              after the restore process is complete.
+                            format: int32
+                            type: integer
+                          type:
+                            description: 'Type specifies the workload kind. Supported
+                              values: "statefulset", "deployment".'
+                            type: string
+                        required:
+                        - name
+                        - namespace
+                        - replicas
+                        - type
+                        type: object
+                      type: array
+                    lock:
+                      description: |-
+                        Lock controls whether this plan is protected from re-execution.
+                        Once a restore is completed successfully, the plan is locked automatically.
+                        Set to false explicitly to allow the plan to be re-executed.
+                        Defaults to locked behavior if not specified.
+                      type: boolean
+                    operators:
+                      description: |-
+                        Operators defines the list of operator deployments to scale down before restore
+                        and scale up after restore is complete. Optional.
+                      items:
+                        properties:
+                          claimSelector:
+                            description: |-
+                              ClaimSelector is a label selector used to identify PVCs associated with this target.
+                              Required for StatefulSet targets. Not needed for Deployments.
+                            properties:
+                              matchExpressions:
+                                description: matchExpressions is a list of label selector
+                                  requirements. The requirements are ANDed.
+                                items:
+                                  description: |-
+                                    A label selector requirement is a selector that contains values, a key, and an operator that
+                                    relates the key and values.
+                                  properties:
+                                    key:
+                                      description: key is the label key that the selector
+                                        applies to.
+                                      type: string
+                                    operator:
+                                      description: |-
+                                        operator represents a key's relationship to a set of values.
+                                        Valid operators are In, NotIn, Exists and DoesNotExist.
+                                      type: string
+                                    values:
+                                      description: |-
+                                        values is an array of string values. If the operator is In or NotIn,
+                                        the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                        the values array must be empty. This array is replaced during a strategic
+                                        merge patch.
+                                      items:
+                                        type: string
+                                      type: array
+                                      x-kubernetes-list-type: atomic
+                                  required:
+                                  - key
+                                  - operator
+                                  type: object
+                                type: array
+                                x-kubernetes-list-type: atomic
+                              matchLabels:
+                                additionalProperties:
+                                  type: string
+                                description: |-
+                                  matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                  map is equivalent to an element of matchExpressions, whose key field is "key", the
+                                  operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                type: object
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          name:
+                            description: Name is the name of the target workload (StatefulSet
+                              or Deployment).
+                            type: string
+                          namespace:
+                            description: Namespace is the Kubernetes namespace where
+                              the target workload resides.
+                            type: string
+                          replicas:
+                            description: |-
+                              Replicas is the desired number of replicas to restore the workload to
+                              after the restore process is complete.
+                            format: int32
+                            type: integer
+                          type:
+                            description: 'Type specifies the workload kind. Supported
+                              values: "statefulset", "deployment".'
+                            type: string
+                        required:
+                        - name
+                        - namespace
+                        - replicas
+                        - type
+                        type: object
+                      type: array
+                    snapshotRestoreTime:
+                      description: |-
+                        SnapshotRestoreTime specifies the exact snapshot timestamp to restore from,
+                        in YYYYMMDDHHMM format (e.g. "202604071537").
+                        If not set, the latest available snapshot will be used automatically.
+                      type: string
+                  required:
+                  - clusters
+                  type: object
+                type: object
+            type: object
+          status:
+            description: status defines the observed state of EBSSnapshotRestore
+            properties:
+              activePlan:
+                description: Currently active restore plan
+                type: string
+              lastUpdated:
+                description: Timestamp of the last update
+                format: date-time
+                type: string
+              phase:
+                description: High-level phase of the entire restore process
+                type: string
+              restorePlans:
+                additionalProperties:
+                  properties:
+                    clusters:
+                      description: Progress and state of cluster targets (e.g. StatefulSets)
+                      items:
+                        description: RestoreTargetStatus reflects the observed state
+                          of a single restore target (StatefulSet or Deployment).
+                        properties:
+                          currentReplicas:
+                            description: CurrentReplicas is the number of replicas
+                              observed during the restore process.
+                            format: int32
+                            type: integer
+                          error:
+                            description: Error contains the error message if this
+                              target encountered a failure during restore.
+                            type: string
+                          name:
+                            description: Name is the name of the target workload.
+                            type: string
+                          namespace:
+                            description: Namespace is the Kubernetes namespace of
+                              the target workload.
+                            type: string
+                          originalReplicas:
+                            description: |-
+                              OriginalReplicas is the number of replicas the workload had before scaling down.
+                              Used to restore the workload to its original desired state after restore.
+                            format: int32
+                            type: integer
+                          phase:
+                            description: Phase is the current phase of this specific
+                              restore target.
+                            type: string
+                          snapshotsRef:
+                            description: SnapshotsRef contains references to the VolumeSnapshots
+                              used for restoring this target's PVCs.
+                            items:
+                              description: RestoreSnapshotRef holds a reference to
+                                a VolumeSnapshot associated with a specific PVC.
+                              properties:
+                                pvcName:
+                                  description: PVCName is the name of the PersistentVolumeClaim
+                                    associated with this snapshot.
+                                  type: string
+                                snapshotName:
+                                  description: SnapshotName is the name of the VolumeSnapshot
+                                    resource used for restore.
+                                  type: string
+                                snapshotUID:
+                                  description: SnapshotUID is the unique identifier
+                                    of the VolumeSnapshot resource.
+                                  type: string
+                              type: object
+                            type: array
+                          type:
+                            description: Type is the kind of the target workload (e.g.
+                              "statefulset", "deployment").
+                            type: string
+                        required:
+                        - currentReplicas
+                        - originalReplicas
+                        type: object
+                      type: array
+                    lock:
+                      description: Indicates whether post-restore unlock step has
+                        been completed
+                      type: boolean
+                    operators:
+                      description: Progress and state of operator components (e.g.
+                        Deployments)
+                      items:
+                        description: RestoreTargetStatus reflects the observed state
+                          of a single restore target (StatefulSet or Deployment).
+                        properties:
+                          currentReplicas:
+                            description: CurrentReplicas is the number of replicas
+                              observed during the restore process.
+                            format: int32
+                            type: integer
+                          error:
+                            description: Error contains the error message if this
+                              target encountered a failure during restore.
+                            type: string
+                          name:
+                            description: Name is the name of the target workload.
+                            type: string
+                          namespace:
+                            description: Namespace is the Kubernetes namespace of
+                              the target workload.
+                            type: string
+                          originalReplicas:
+                            description: |-
+                              OriginalReplicas is the number of replicas the workload had before scaling down.
+                              Used to restore the workload to its original desired state after restore.
+                            format: int32
+                            type: integer
+                          phase:
+                            description: Phase is the current phase of this specific
+                              restore target.
+                            type: string
+                          snapshotsRef:
+                            description: SnapshotsRef contains references to the VolumeSnapshots
+                              used for restoring this target's PVCs.
+                            items:
+                              description: RestoreSnapshotRef holds a reference to
+                                a VolumeSnapshot associated with a specific PVC.
+                              properties:
+                                pvcName:
+                                  description: PVCName is the name of the PersistentVolumeClaim
+                                    associated with this snapshot.
+                                  type: string
+                                snapshotName:
+                                  description: SnapshotName is the name of the VolumeSnapshot
+                                    resource used for restore.
+                                  type: string
+                                snapshotUID:
+                                  description: SnapshotUID is the unique identifier
+                                    of the VolumeSnapshot resource.
+                                  type: string
+                              type: object
+                            type: array
+                          type:
+                            description: Type is the kind of the target workload (e.g.
+                              "statefulset", "deployment").
+                            type: string
+                        required:
+                        - currentReplicas
+                        - originalReplicas
+                        type: object
+                      type: array
+                    snapshotRestoreTime:
+                      description: Snapshot timestamp used for restore (logical restore
+                        point)
+                      type: string
+                  type: object
+                description: Detailed status for each restore plan
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

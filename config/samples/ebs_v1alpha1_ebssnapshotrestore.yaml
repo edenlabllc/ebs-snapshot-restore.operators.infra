@@ -1,0 +1,38 @@
+apiVersion: ebs.aws.edenlab.io/v1alpha1
+kind: EBSSnapshotRestore
+metadata:
+  labels:
+    app.kubernetes.io/name: ebs-snapshot-restore
+    app.kubernetes.io/managed-by: kustomize
+  name: ebs-snapshot-restore
+spec:
+  restorePlans:
+    db-ebs-csi-snapshot:
+      clusters:
+        - name: db-cluster-0
+          type: statefulset
+          replicas: 1
+          namespace: db
+          claimSelector:
+            matchLabels:
+              release: db
+
+      operators:
+        - name: operator
+          replicas: 1
+          namespace: db
+          type: deployment
+
+      snapshotRestoreTime: "202601010000"
+
+    object-storage-ebs-csi-snapshot:
+      clusters:
+        - name: object-storage
+          type: statefulset
+          replicas: 4
+          namespace: object-storage
+          claimSelector:
+            matchLabels:
+              release: object-storage
+
+      snapshotRestoreTime: "202601010000"
