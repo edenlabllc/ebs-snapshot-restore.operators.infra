@@ -53,8 +53,21 @@ func (m *ManageValidate) ValidateListSnapshots(ctx context.Context, obj *ebsv1al
 
 		switch {
 		case len(plan.SnapshotRestoreTime) == 0:
-			latestTime, err := m.findLatestSnapshotTime(ctx, planName, plan.Clusters)
+			latestTime, clustersStatus, err := m.findLatestSnapshotTime(ctx, planName, plan.Clusters)
 			if err != nil {
+				if setErr := m.Status.SetValidateRestorePlan(ctx, obj, planName, "",
+					lock, clustersStatus, nil); setErr != nil {
+					return setErr
+				}
+
+				if setErr := m.Status.SetActivePlan(ctx, obj, planName); setErr != nil {
+					return setErr
+				}
+
+				if setErr := m.Status.SetPhase(ctx, obj, ebsv1alpha1.PhaseFailed); setErr != nil {
+					return setErr
+				}
+
 				lastErr = err
 				continue
 			}
@@ -105,27 +118,37 @@ func validateSnapshotTime(s string) error {
 	return nil
 }
 
-func (m *ManageValidate) findLatestSnapshotTime(ctx context.Context, planName string, clusters []ebsv1alpha1.RestoreTarget) (string, error) {
-	var latestTime string
+func (m *ManageValidate) findLatestSnapshotTime(ctx context.Context, planName string, clusters []ebsv1alpha1.RestoreTarget) (string, []ebsv1alpha1.RestoreTargetStatus, error) {
+	var (
+		latestTime     string
+		clustersStatus []ebsv1alpha1.RestoreTargetStatus
+	)
 
 	for _, cluster := range clusters {
+		clusterStatus := ebsv1alpha1.RestoreTargetStatus{
+			Name:      cluster.Name,
+			Namespace: cluster.Namespace,
+			Type:      cluster.Type,
+		}
+
 		if cluster.ClaimSelector == nil {
-			return "", fmt.Errorf("cluster %s has no claimSelector", cluster.Name)
+			err := fmt.Errorf("cluster %s has no claimSelector", cluster.Name)
+			return "", appendFailed(clustersStatus, clusterStatus, err), err
+		}
+
+		pvcSelector, err := metav1.LabelSelectorAsSelector(cluster.ClaimSelector)
+		if err != nil {
+			return "", appendFailed(clustersStatus, clusterStatus, err), err
+		}
+
+		pvcList := &v1.PersistentVolumeClaimList{}
+		if err := m.Client.List(ctx, pvcList, client.InNamespace(cluster.Namespace), client.MatchingLabelsSelector{Selector: pvcSelector}); err != nil {
+			return "", appendFailed(clustersStatus, clusterStatus, err), err
 		}
 
 		vsList := &snapv1.VolumeSnapshotList{}
 		if err := m.Client.List(ctx, vsList, client.InNamespace(cluster.Namespace)); err != nil {
-			return "", err
-		}
-
-		pvcList := &v1.PersistentVolumeClaimList{}
-		pvcSelector, err := metav1.LabelSelectorAsSelector(cluster.ClaimSelector)
-		if err != nil {
-			return "", err
-		}
-
-		if err := m.Client.List(ctx, pvcList, client.InNamespace(cluster.Namespace), client.MatchingLabelsSelector{Selector: pvcSelector}); err != nil {
-			return "", err
+			return "", appendFailed(clustersStatus, clusterStatus, err), err
 		}
 
 		for _, pvc := range pvcList.Items {
@@ -141,13 +164,17 @@ func (m *ManageValidate) findLatestSnapshotTime(ctx context.Context, planName st
 				}
 			}
 		}
+
+		clusterStatus.Phase = ebsv1alpha1.PhaseValidating
+		clustersStatus = append(clustersStatus, clusterStatus)
 	}
 
 	if latestTime == "" {
-		return "", fmt.Errorf("no snapshots found for plan %s", planName)
+		err := fmt.Errorf("no snapshots found for plan %s", planName)
+		return "", clustersStatus, err
 	}
 
-	return latestTime, nil
+	return latestTime, clustersStatus, nil
 }
 
 func (m *ManageValidate) validateSnapshot(ctx context.Context, planName string,
