@@ -126,9 +126,11 @@ func (m *ManageValidate) findLatestSnapshotTime(ctx context.Context, planName st
 
 	for _, cluster := range clusters {
 		clusterStatus := ebsv1alpha1.RestoreTargetStatus{
-			Name:      cluster.Name,
-			Namespace: cluster.Namespace,
-			Type:      cluster.Type,
+			Name:             cluster.Name,
+			Namespace:        cluster.Namespace,
+			Type:             cluster.Type,
+			OriginalReplicas: cluster.Replicas,
+			CurrentReplicas:  cluster.Replicas,
 		}
 
 		if cluster.ClaimSelector == nil {
@@ -146,11 +148,18 @@ func (m *ManageValidate) findLatestSnapshotTime(ctx context.Context, planName st
 			return "", appendFailed(clustersStatus, clusterStatus, err), err
 		}
 
+		if len(pvcList.Items) == 0 {
+			err := fmt.Errorf("no PVCs found for cluster %s in namespace %s by selector %s, check claimSelector in plan %s",
+				cluster.Name, cluster.Namespace, cluster.ClaimSelector.MatchLabels, planName)
+			return "", appendFailed(clustersStatus, clusterStatus, err), err
+		}
+
 		vsList := &snapv1.VolumeSnapshotList{}
 		if err := m.Client.List(ctx, vsList, client.InNamespace(cluster.Namespace)); err != nil {
 			return "", appendFailed(clustersStatus, clusterStatus, err), err
 		}
 
+		clusterLatestTime := ""
 		for _, pvc := range pvcList.Items {
 			prefix := pvc.Name + "-" + planName + "-"
 			for _, vs := range vsList.Items {
@@ -159,19 +168,22 @@ func (m *ManageValidate) findLatestSnapshotTime(ctx context.Context, planName st
 				}
 
 				when := strings.TrimPrefix(vs.Name, prefix)
-				if when > latestTime {
-					latestTime = when
+				if when > clusterLatestTime {
+					clusterLatestTime = when
 				}
 			}
 		}
 
-		clusterStatus.Phase = ebsv1alpha1.PhaseValidating
-		clustersStatus = append(clustersStatus, clusterStatus)
-	}
+		if clusterLatestTime == "" {
+			err := fmt.Errorf("no snapshots found for cluster %s in plan %s", cluster.Name, planName)
+			return "", appendFailed(clustersStatus, clusterStatus, err), err
+		}
 
-	if latestTime == "" {
-		err := fmt.Errorf("no snapshots found for plan %s", planName)
-		return "", clustersStatus, err
+		if clusterLatestTime > latestTime {
+			latestTime = clusterLatestTime
+		}
+
+		clustersStatus = append(clustersStatus, clusterStatus)
 	}
 
 	return latestTime, clustersStatus, nil
