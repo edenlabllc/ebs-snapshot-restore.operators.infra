@@ -2,7 +2,6 @@ package status
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -59,7 +58,6 @@ func (m *ManageStatus) Patch(ctx context.Context, obj *ebsv1alpha1.EBSSnapshotRe
 	after.LastUpdated = &now
 	obj.Status = after
 
-	m.Logger.Info(fmt.Sprintf("%s, patching status", processName))
 	return m.Client.Status().Patch(ctx, obj, client.MergeFrom(oldObj))
 }
 

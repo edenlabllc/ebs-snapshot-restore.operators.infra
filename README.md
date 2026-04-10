@@ -1,5 +1,9 @@
 # ebs-snapshot-restore
 
+[![Release](https://img.shields.io/github/v/release/edenlabllc/ebs-snapshot-restore.operators.infra.svg?style=for-the-badge)](https://github.com/edenlabllc/ebs-snapshot-restore.operators.infra/releases/latest)
+[![Software License](https://img.shields.io/github/license/edenlabllc/ebs-snapshot-restore.operators.infra.svg?style=for-the-badge)](LICENSE)
+[![Powered By: Edenlab](https://img.shields.io/badge/powered%20by-edenlab-8A2BE2.svg?style=for-the-badge)](https://edenlab.io)
+
 A Kubernetes operator for automated restoration of EBS volumes from snapshots.
 Designed to restore stateful workloads (StatefulSets) and their associated PersistentVolumeClaims
 from pre-existing VolumeSnapshots created by [SnapScheduler](https://backube.github.io/snapscheduler/).
@@ -143,7 +147,6 @@ previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml
 is manually re-applied afterwards.
 
 ## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
 
 **NOTE:** Run `make help` for more information on all potential `make` targets
 
@@ -164,4 +167,3 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-

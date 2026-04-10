@@ -1,8 +1,8 @@
 package scale
 
 import (
-	ebsv1alpha1 "ebs-snapshot-restore.operators.infra/api/v1alpha1"
-	"ebs-snapshot-restore.operators.infra/internal/status"
+	"time"
+
 	"github.com/go-logr/logr"
 	"golang.org/x/net/context"
 	appsv1 "k8s.io/api/apps/v1"
@@ -10,7 +10,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"time"
+
+	ebsv1alpha1 "ebs-snapshot-restore.operators.infra/api/v1alpha1"
+	"ebs-snapshot-restore.operators.infra/internal/status"
 )
 
 const (
