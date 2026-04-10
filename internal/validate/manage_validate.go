@@ -1,9 +1,10 @@
 package validate
 
 import (
-	ebsv1alpha1 "ebs-snapshot-restore.operators.infra/api/v1alpha1"
-	"ebs-snapshot-restore.operators.infra/internal/status"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/go-logr/logr"
 	snapv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	"golang.org/x/net/context"
@@ -13,8 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
-	"time"
+
+	ebsv1alpha1 "ebs-snapshot-restore.operators.infra/api/v1alpha1"
+	"ebs-snapshot-restore.operators.infra/internal/status"
 )
 
 const (
@@ -55,16 +57,7 @@ func (m *ManageValidate) ValidateListSnapshots(ctx context.Context, obj *ebsv1al
 		case len(plan.SnapshotRestoreTime) == 0:
 			latestTime, clustersStatus, err := m.findLatestSnapshotTime(ctx, planName, plan.Clusters)
 			if err != nil {
-				if setErr := m.Status.SetValidateRestorePlan(ctx, obj, planName, "",
-					lock, clustersStatus, nil); setErr != nil {
-					return setErr
-				}
-
-				if setErr := m.Status.SetActivePlan(ctx, obj, planName); setErr != nil {
-					return setErr
-				}
-
-				if setErr := m.Status.SetPhase(ctx, obj, ebsv1alpha1.PhaseFailed); setErr != nil {
+				if setErr := m.failPlan(ctx, obj, planName, plan.SnapshotRestoreTime, lock, clustersStatus, nil); setErr != nil {
 					return setErr
 				}
 
@@ -76,26 +69,28 @@ func (m *ManageValidate) ValidateListSnapshots(ctx context.Context, obj *ebsv1al
 			fallthrough
 		case len(plan.SnapshotRestoreTime) > 0:
 			if err := validateSnapshotTime(plan.SnapshotRestoreTime); err != nil {
-				return err
-			}
-
-			clustersStatus, operatorsStatus, err := m.validateSnapshot(ctx, planName, &plan)
-			if setErr := m.Status.SetValidateRestorePlan(ctx, obj, planName, plan.SnapshotRestoreTime, lock,
-				clustersStatus, operatorsStatus); setErr != nil {
-				return setErr
-			}
-
-			if err != nil {
-				if setErr := m.Status.SetActivePlan(ctx, obj, planName); setErr != nil {
-					return setErr
-				}
-
-				if setErr := m.Status.SetPhase(ctx, obj, ebsv1alpha1.PhaseFailed); setErr != nil {
+				clustersStatus := buildFailedClustersStatus(plan.Clusters, err)
+				if setErr := m.failPlan(ctx, obj, planName, plan.SnapshotRestoreTime, lock, clustersStatus, nil); setErr != nil {
 					return setErr
 				}
 
 				lastErr = err
 				continue
+			}
+
+			clustersStatus, operatorsStatus, err := m.validateSnapshot(ctx, planName, &plan)
+			if err != nil {
+				if setErr := m.failPlan(ctx, obj, planName, plan.SnapshotRestoreTime, lock, clustersStatus, operatorsStatus); setErr != nil {
+					return setErr
+				}
+
+				lastErr = err
+				continue
+			}
+
+			if setErr := m.Status.SetValidateRestorePlan(ctx, obj, planName, plan.SnapshotRestoreTime, lock,
+				clustersStatus, operatorsStatus); setErr != nil {
+				return setErr
 			}
 
 			if lastErr == nil {
@@ -109,13 +104,51 @@ func (m *ManageValidate) ValidateListSnapshots(ctx context.Context, obj *ebsv1al
 	return lastErr
 }
 
-func validateSnapshotTime(s string) error {
-	_, err := time.Parse(snapshotTimeLayout, s)
-	if err != nil {
-		return fmt.Errorf("invalid snapshotRestoreTime format, expected YYYYMMDDHHMM: %w", err)
+func (m *ManageValidate) fetchClusterResources(ctx context.Context, cluster ebsv1alpha1.RestoreTarget, planName, snapshotTime string) (*v1.PersistentVolumeClaimList, *snapv1.VolumeSnapshotList, error) {
+	if cluster.ClaimSelector == nil {
+		return nil, nil, fmt.Errorf("cluster %s has no claimSelector", cluster.Name)
 	}
 
-	return nil
+	pvcSelector, err := metav1.LabelSelectorAsSelector(cluster.ClaimSelector)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	pvcList := &v1.PersistentVolumeClaimList{}
+	if err := m.Client.List(ctx, pvcList, client.InNamespace(cluster.Namespace), client.MatchingLabelsSelector{Selector: pvcSelector}); err != nil {
+		return nil, nil, err
+	}
+
+	if len(pvcList.Items) == 0 {
+		return nil, nil, fmt.Errorf("no PVCs found for cluster %s in namespace %s by selector %s, check claimSelector in plan %s",
+			cluster.Name, cluster.Namespace, cluster.ClaimSelector.MatchLabels, planName)
+	}
+
+	listOpts := []client.ListOption{client.InNamespace(cluster.Namespace)}
+	if snapshotTime != "" {
+		listOpts = append(listOpts, client.MatchingLabels{"snapscheduler.backube/when": snapshotTime})
+	}
+
+	vsList := &snapv1.VolumeSnapshotList{}
+	if err := m.Client.List(ctx, vsList, listOpts...); err != nil {
+		return nil, nil, err
+	}
+
+	return pvcList, vsList, nil
+}
+
+func (m *ManageValidate) failPlan(ctx context.Context, obj *ebsv1alpha1.EBSSnapshotRestore, planName string,
+	snapshotTime string, lock bool, clustersStatus []ebsv1alpha1.RestoreTargetStatus,
+	operatorsStatus []ebsv1alpha1.RestoreTargetStatus) error {
+	if setErr := m.Status.SetValidateRestorePlan(ctx, obj, planName, snapshotTime, lock, clustersStatus, operatorsStatus); setErr != nil {
+		return setErr
+	}
+
+	if setErr := m.Status.SetActivePlan(ctx, obj, planName); setErr != nil {
+		return setErr
+	}
+
+	return m.Status.SetPhase(ctx, obj, ebsv1alpha1.PhaseFailed)
 }
 
 func (m *ManageValidate) findLatestSnapshotTime(ctx context.Context, planName string, clusters []ebsv1alpha1.RestoreTarget) (string, []ebsv1alpha1.RestoreTargetStatus, error) {
@@ -133,29 +166,8 @@ func (m *ManageValidate) findLatestSnapshotTime(ctx context.Context, planName st
 			CurrentReplicas:  cluster.Replicas,
 		}
 
-		if cluster.ClaimSelector == nil {
-			err := fmt.Errorf("cluster %s has no claimSelector", cluster.Name)
-			return "", appendFailed(clustersStatus, clusterStatus, err), err
-		}
-
-		pvcSelector, err := metav1.LabelSelectorAsSelector(cluster.ClaimSelector)
+		pvcList, vsList, err := m.fetchClusterResources(ctx, cluster, planName, "")
 		if err != nil {
-			return "", appendFailed(clustersStatus, clusterStatus, err), err
-		}
-
-		pvcList := &v1.PersistentVolumeClaimList{}
-		if err := m.Client.List(ctx, pvcList, client.InNamespace(cluster.Namespace), client.MatchingLabelsSelector{Selector: pvcSelector}); err != nil {
-			return "", appendFailed(clustersStatus, clusterStatus, err), err
-		}
-
-		if len(pvcList.Items) == 0 {
-			err := fmt.Errorf("no PVCs found for cluster %s in namespace %s by selector %s, check claimSelector in plan %s",
-				cluster.Name, cluster.Namespace, cluster.ClaimSelector.MatchLabels, planName)
-			return "", appendFailed(clustersStatus, clusterStatus, err), err
-		}
-
-		vsList := &snapv1.VolumeSnapshotList{}
-		if err := m.Client.List(ctx, vsList, client.InNamespace(cluster.Namespace)); err != nil {
 			return "", appendFailed(clustersStatus, clusterStatus, err), err
 		}
 
@@ -204,11 +216,6 @@ func (m *ManageValidate) validateSnapshot(ctx context.Context, planName string,
 			Type:      cluster.Type,
 		}
 
-		if cluster.ClaimSelector == nil {
-			err := fmt.Errorf("cluster %s has no claimSelector", cluster.Name)
-			return appendFailed(validateClustersStatus, clusterStatus, err), validateOperatorsStatus, err
-		}
-
 		sts := &appsv1.StatefulSet{}
 		if err := m.Client.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, sts); err != nil {
 			return appendFailed(validateClustersStatus, clusterStatus, err), validateOperatorsStatus, err
@@ -219,26 +226,15 @@ func (m *ManageValidate) validateSnapshot(ctx context.Context, planName string,
 			clusterStatus.CurrentReplicas = *sts.Spec.Replicas
 		}
 
-		pvcList := &v1.PersistentVolumeClaimList{}
-		pvcSelector, err := metav1.LabelSelectorAsSelector(cluster.ClaimSelector)
+		pvcList, vsList, err := m.fetchClusterResources(ctx, cluster, planName, plan.SnapshotRestoreTime)
 		if err != nil {
-			return appendFailed(validateClustersStatus, clusterStatus, err), validateOperatorsStatus, err
-		}
-
-		if err := m.Client.List(ctx, pvcList, client.InNamespace(cluster.Namespace), client.MatchingLabelsSelector{Selector: pvcSelector}); err != nil {
-			return appendFailed(validateClustersStatus, clusterStatus, err), validateOperatorsStatus, err
-		}
-
-		vsList := &snapv1.VolumeSnapshotList{}
-		if err := m.Client.List(ctx, vsList, client.InNamespace(cluster.Namespace),
-			client.MatchingLabels{"snapscheduler.backube/when": plan.SnapshotRestoreTime}); err != nil {
 			return appendFailed(validateClustersStatus, clusterStatus, err), validateOperatorsStatus, err
 		}
 
 		for _, vs := range vsList.Items {
 			for _, pvc := range pvcList.Items {
 				if pvc.Name+"-"+planName+"-"+plan.SnapshotRestoreTime == vs.Name {
-					if !*vs.Status.ReadyToUse {
+					if vs.Status.ReadyToUse == nil || !*vs.Status.ReadyToUse {
 						err := fmt.Errorf("snapshot %s is not ready to use", vs.Name)
 						return appendFailed(validateClustersStatus, clusterStatus, err), validateOperatorsStatus, err
 					}
@@ -253,7 +249,8 @@ func (m *ManageValidate) validateSnapshot(ctx context.Context, planName string,
 		}
 
 		if len(snapshotsRef) == 0 {
-			err := fmt.Errorf("snapshots for plan %s is not found by time %s", planName, plan.SnapshotRestoreTime)
+			err := fmt.Errorf("no snapshots found in namespace %s by time %s for plan %s, check snapshotRestoreTime",
+				cluster.Namespace, plan.SnapshotRestoreTime, planName)
 			return appendFailed(validateClustersStatus, clusterStatus, err), validateOperatorsStatus, err
 		}
 
@@ -290,4 +287,28 @@ func appendFailed(statuses []ebsv1alpha1.RestoreTargetStatus, base ebsv1alpha1.R
 	base.Phase = ebsv1alpha1.PhaseFailed
 	base.Error = err.Error()
 	return append(statuses, base)
+}
+
+func buildFailedClustersStatus(clusters []ebsv1alpha1.RestoreTarget, err error) []ebsv1alpha1.RestoreTargetStatus {
+	statuses := make([]ebsv1alpha1.RestoreTargetStatus, 0, len(clusters))
+	for _, cluster := range clusters {
+		statuses = appendFailed(statuses, ebsv1alpha1.RestoreTargetStatus{
+			Name:             cluster.Name,
+			Namespace:        cluster.Namespace,
+			Type:             cluster.Type,
+			CurrentReplicas:  cluster.Replicas,
+			OriginalReplicas: cluster.Replicas,
+		}, err)
+	}
+
+	return statuses
+}
+
+func validateSnapshotTime(s string) error {
+	_, err := time.Parse(snapshotTimeLayout, s)
+	if err != nil {
+		return fmt.Errorf("invalid snapshotRestoreTime format, expected YYYYMMDDHHMM: %w", err)
+	}
+
+	return nil
 }

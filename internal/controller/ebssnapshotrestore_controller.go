@@ -18,20 +18,22 @@ package controller
 
 import (
 	"context"
-	"ebs-snapshot-restore.operators.infra/internal/restore"
-	"ebs-snapshot-restore.operators.infra/internal/scale"
-	"ebs-snapshot-restore.operators.infra/internal/status"
-	"ebs-snapshot-restore.operators.infra/internal/validate"
 	"fmt"
+	"time"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"time"
 
 	ebsv1alpha1 "ebs-snapshot-restore.operators.infra/api/v1alpha1"
+	"ebs-snapshot-restore.operators.infra/internal/restore"
+	"ebs-snapshot-restore.operators.infra/internal/scale"
+	"ebs-snapshot-restore.operators.infra/internal/status"
+	"ebs-snapshot-restore.operators.infra/internal/validate"
 )
 
 // EBSSnapshotRestoreReconciler reconciles a EBSSnapshotRestore object
@@ -109,9 +111,10 @@ func (r *EBSSnapshotRestoreReconciler) Reconcile(ctx context.Context, req ctrl.R
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *EBSSnapshotRestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *EBSSnapshotRestoreReconciler) SetupWithManager(mgr ctrl.Manager, maxConcurrentReconciles int) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ebsv1alpha1.EBSSnapshotRestore{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Named("ebssnapshotrestore").
 		Complete(r)
