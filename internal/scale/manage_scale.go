@@ -220,8 +220,7 @@ func (m *ManageScale) scaleClusterUp(ctx context.Context, cluster *ebsv1alpha1.R
 			)
 
 			if sts.Status.ReadyReplicas == cluster.Replicas &&
-				sts.Status.UpdatedReplicas == cluster.Replicas &&
-				sts.Status.CurrentRevision == sts.Status.UpdateRevision {
+				sts.Status.UpdatedReplicas == cluster.Replicas {
 				return true, nil
 			}
 
