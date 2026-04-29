@@ -235,7 +235,7 @@ func (m *ManageScale) scaleClusterUp(ctx context.Context, cluster *ebsv1alpha1.R
 				}
 			default:
 				err := fmt.Errorf("unknown update strategy type: %s", sts.Spec.UpdateStrategy.Type)
-				m.Logger.Error(err, "not possible to scale down", "type", sts.Spec.UpdateStrategy.Type)
+				m.Logger.Error(err, "not possible to scale up", "type", sts.Spec.UpdateStrategy.Type)
 
 				return false, err
 			}
