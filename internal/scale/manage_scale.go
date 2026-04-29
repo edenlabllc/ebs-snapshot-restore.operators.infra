@@ -1,6 +1,7 @@
 package scale
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -219,10 +220,24 @@ func (m *ManageScale) scaleClusterUp(ctx context.Context, cluster *ebsv1alpha1.R
 				"expected", cluster.Replicas,
 			)
 
-			if sts.Status.ReadyReplicas == cluster.Replicas &&
-				sts.Status.UpdatedReplicas == cluster.Replicas &&
-				sts.Status.CurrentRevision == sts.Status.UpdateRevision {
-				return true, nil
+			switch sts.Spec.UpdateStrategy.Type {
+			case appsv1.RollingUpdateStatefulSetStrategyType:
+				if sts.Status.ReadyReplicas == cluster.Replicas &&
+					sts.Status.UpdatedReplicas == cluster.Replicas &&
+					sts.Status.CurrentRevision == sts.Status.UpdateRevision {
+					return true, nil
+				}
+			case appsv1.OnDeleteStatefulSetStrategyType:
+				if sts.Status.ReadyReplicas == cluster.Replicas &&
+					sts.Status.Replicas == cluster.Replicas &&
+					sts.Status.ObservedGeneration >= sts.Generation {
+					return true, nil
+				}
+			default:
+				err := fmt.Errorf("unknown update strategy type: %s", sts.Spec.UpdateStrategy.Type)
+				m.Logger.Error(err, "not possible to scale up", "type", sts.Spec.UpdateStrategy.Type)
+
+				return false, err
 			}
 
 			return false, nil
