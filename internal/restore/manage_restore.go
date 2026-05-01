@@ -52,6 +52,11 @@ func (m *ManageRestore) RestoreFromPlan(ctx context.Context, obj *ebsv1alpha1.EB
 
 		for key, cluster := range planStatus.Clusters {
 			for _, snap := range cluster.SnapshotsRef {
+				if snap.SkipRestoringPVC {
+					m.Logger.Info("Skipping PVC restore", "pvc", snap.PVCName, "reason", "listed in skipPVCRestoreNames")
+					continue
+				}
+
 				if err := m.restorePVC(ctx, cluster.Namespace, snap.PVCName, snap.SnapshotName); err != nil {
 					clusters[key].Phase = ebsv1alpha1.PhaseFailed
 					clusters[key].Error = err.Error()

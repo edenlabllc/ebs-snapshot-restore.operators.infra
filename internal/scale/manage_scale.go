@@ -7,6 +7,8 @@ import (
 	"github.com/go-logr/logr"
 	"golang.org/x/net/context"
 	appsv1 "k8s.io/api/apps/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -197,6 +199,12 @@ func (m *ManageScale) scaleClusterUp(ctx context.Context, cluster *ebsv1alpha1.R
 		return err
 	}
 
+	if cluster.PodManagementPolicy != "" && string(sts.Spec.PodManagementPolicy) != cluster.PodManagementPolicy {
+		if err := m.recreateSTSWithPodManagementPolicy(ctx, sts, cluster.PodManagementPolicy); err != nil {
+			return err
+		}
+	}
+
 	if sts.Spec.Replicas == nil || *sts.Spec.Replicas != cluster.Replicas {
 		baseSTS := client.MergeFrom(sts.DeepCopy())
 		sts.Spec.Replicas = &cluster.Replicas
@@ -330,4 +338,56 @@ func (m *ManageScale) scaleOperatorUp(ctx context.Context, operator *ebsv1alpha1
 			return false, nil
 		},
 	)
+}
+
+func (m *ManageScale) recreateSTSWithPodManagementPolicy(ctx context.Context, sts *appsv1.StatefulSet, podManagementPolicy string) error {
+	m.Logger.Info("Recreating StatefulSet with new pod management policy",
+		"name", sts.Name,
+		"namespace", sts.Namespace,
+		"podManagementPolicy", podManagementPolicy,
+	)
+
+	if podManagementPolicy != string(appsv1.ParallelPodManagement) && podManagementPolicy != string(appsv1.OrderedReadyPodManagement) {
+		return fmt.Errorf("invalid pod management policy %s: must be either %q or %q",
+			podManagementPolicy,
+			appsv1.ParallelPodManagement,
+			appsv1.OrderedReadyPodManagement,
+		)
+	}
+
+	deletePolicy := metav1.DeletePropagationOrphan
+	if err := m.Client.Delete(ctx, sts, &client.DeleteOptions{PropagationPolicy: &deletePolicy}); err != nil {
+		return fmt.Errorf("failed to delete STS: %w", err)
+	}
+
+	if err := wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true,
+		func(ctx context.Context) (bool, error) {
+			existing := &appsv1.StatefulSet{}
+			err := m.Client.Get(ctx, types.NamespacedName{
+				Name:      sts.Name,
+				Namespace: sts.Namespace,
+			}, existing)
+			if apierrors.IsNotFound(err) {
+				return true, nil
+			}
+			return false, err
+		},
+	); err != nil {
+		return fmt.Errorf("timed out waiting for STS deletion: %w", err)
+	}
+
+	zero := int32(0)
+	newSTS := sts.DeepCopy()
+	newSTS.ResourceVersion = ""
+	newSTS.UID = ""
+	newSTS.Generation = 0
+	newSTS.Spec.PodManagementPolicy = appsv1.PodManagementPolicyType(podManagementPolicy)
+	newSTS.Spec.Replicas = &zero
+
+	if err := m.Client.Create(ctx, newSTS); err != nil {
+		return fmt.Errorf("failed to recreate STS: %w", err)
+	}
+
+	m.Logger.Info("StatefulSet recreated with policy"+fmt.Sprintf(" %s", podManagementPolicy), "name", sts.Name)
+	return nil
 }

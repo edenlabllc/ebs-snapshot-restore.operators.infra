@@ -55,6 +55,19 @@ type RestoreTarget struct {
 	// Namespace is the Kubernetes namespace where the target workload resides.
 	Namespace string `json:"namespace"`
 
+	// SkipRestoringPVCs is a list of PVC names to skip during restore.
+	// PVCs in this list will not be recreated from snapshots and will retain
+	// their current state. Useful when some volumes do not require restoration.
+	SkipRestoringPVCs []string `json:"skipRestoringPVCs,omitempty"`
+
+	// PodManagementPolicy overrides the default StatefulSet pod management policy.
+	// When set to "Parallel", all pods are started simultaneously instead of sequentially.
+	// This is useful when restoring from snapshots to minimize oplog divergence between
+	// replica set members, which can cause rollback issues on large datasets.
+	// Valid values are "OrderedReady" (default) and "Parallel".
+	// +kubebuilder:validation:Enum=OrderedReady;Parallel
+	PodManagementPolicy string `json:"podManagementPolicy,omitempty"`
+
 	// ClaimSelector is a label selector used to identify PVCs associated with this target.
 	// Required for StatefulSet targets. Not needed for Deployments.
 	// +optional

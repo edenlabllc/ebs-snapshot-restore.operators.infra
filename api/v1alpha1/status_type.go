@@ -45,6 +45,10 @@ type RestoreSnapshotRef struct {
 
 	// SnapshotName is the name of the VolumeSnapshot resource used for restore.
 	SnapshotName string `json:"snapshotName,omitempty"`
+
+	// SkipRestoringPVC indicates whether PVC restoration was skipped for this target.
+	// When true, the PVC was not recreated from a snapshot and retains its current state.
+	SkipRestoringPVC bool `json:"skipRestoringPVC"`
 }
 
 // RestoreTargetStatus reflects the observed state of a single restore target (StatefulSet or Deployment).
@@ -60,6 +64,9 @@ type RestoreTargetStatus struct {
 
 	// SnapshotsRef contains references to the VolumeSnapshots used for restoring this target's PVCs.
 	SnapshotsRef []RestoreSnapshotRef `json:"snapshotsRef,omitempty"`
+
+	// PodManagementPolicy is the pod management policy applied to the StatefulSet during restore.
+	PodManagementPolicy string `json:"podManagementPolicy,omitempty"`
 
 	// OriginalReplicas is the number of replicas the workload had before scaling down.
 	// Used to restore the workload to its original desired state after restore.
