@@ -7,6 +7,8 @@ import (
 	"github.com/go-logr/logr"
 	"golang.org/x/net/context"
 	appsv1 "k8s.io/api/apps/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -17,8 +19,11 @@ import (
 )
 
 const (
-	pollInterval = 5 * time.Second
-	pollTimeout  = 10 * time.Minute
+	pollInterval               = 5 * time.Second
+	pollTimeout                = 10 * time.Minute
+	stsPollInterval            = 2 * time.Second
+	stsPollTimeout             = 10 * time.Second
+	scaleUpOperatorWaitTimeout = 10 * time.Second
 
 	UpScale   = "up"
 	DownScale = "down"
@@ -76,7 +81,7 @@ func (m *ManageScale) ScaleRestorePlan(ctx context.Context, obj *ebsv1alpha1.EBS
 		}
 
 		if planStatus, ok := obj.Status.RestorePlans[planName]; ok {
-			if planStatus.Lock && (plan.Lock == nil || *plan.Lock) && scale == DownScale {
+			if planStatus.Lock && scale == DownScale {
 				continue
 			}
 
@@ -197,7 +202,14 @@ func (m *ManageScale) scaleClusterUp(ctx context.Context, cluster *ebsv1alpha1.R
 		return err
 	}
 
-	if sts.Spec.Replicas == nil || *sts.Spec.Replicas != cluster.Replicas {
+	if cluster.ParallelPodManagement && sts.Spec.PodManagementPolicy == appsv1.OrderedReadyPodManagement &&
+		(sts.Spec.Replicas == nil || *sts.Spec.Replicas < cluster.Replicas) {
+		if err := m.recreateSTSWithPodManagementPolicy(ctx, sts, appsv1.ParallelPodManagement); err != nil {
+			return err
+		}
+	}
+
+	if sts.Spec.Replicas == nil || *sts.Spec.Replicas < cluster.Replicas {
 		baseSTS := client.MergeFrom(sts.DeepCopy())
 		sts.Spec.Replicas = &cluster.Replicas
 		if err := m.Client.Patch(ctx, sts, baseSTS); err != nil {
@@ -205,7 +217,7 @@ func (m *ManageScale) scaleClusterUp(ctx context.Context, cluster *ebsv1alpha1.R
 		}
 	}
 
-	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true,
+	if err := wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true,
 		func(ctx context.Context) (bool, error) {
 			if err := m.Client.Get(ctx, types.NamespacedName{
 				Name:      cluster.Name,
@@ -242,7 +254,25 @@ func (m *ManageScale) scaleClusterUp(ctx context.Context, cluster *ebsv1alpha1.R
 
 			return false, nil
 		},
-	)
+	); err != nil {
+		return err
+	}
+
+	if err := m.Client.Get(ctx, types.NamespacedName{
+		Name:      cluster.Name,
+		Namespace: cluster.Namespace,
+	}, sts); err != nil {
+		return err
+	}
+	if cluster.ParallelPodManagement && sts.Spec.PodManagementPolicy == appsv1.ParallelPodManagement {
+		if err := m.recreateSTSWithPodManagementPolicy(ctx, sts, appsv1.OrderedReadyPodManagement); err != nil {
+			return err
+		}
+	}
+
+	time.Sleep(scaleUpOperatorWaitTimeout)
+
+	return nil
 }
 
 func (m *ManageScale) scaleOperatorDown(ctx context.Context, operator *ebsv1alpha1.RestoreTarget) error {
@@ -298,7 +328,7 @@ func (m *ManageScale) scaleOperatorUp(ctx context.Context, operator *ebsv1alpha1
 		return err
 	}
 
-	if deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != operator.Replicas {
+	if deployment.Spec.Replicas == nil || *deployment.Spec.Replicas < operator.Replicas {
 		baseDeployment := client.MergeFrom(deployment.DeepCopy())
 		deployment.Spec.Replicas = &operator.Replicas
 		if err := m.Client.Patch(ctx, deployment, baseDeployment); err != nil {
@@ -330,4 +360,45 @@ func (m *ManageScale) scaleOperatorUp(ctx context.Context, operator *ebsv1alpha1
 			return false, nil
 		},
 	)
+}
+
+func (m *ManageScale) recreateSTSWithPodManagementPolicy(ctx context.Context, sts *appsv1.StatefulSet, podManagementPolicy appsv1.PodManagementPolicyType) error {
+	m.Logger.Info("Recreating StatefulSet with new pod management policy",
+		"name", sts.Name,
+		"namespace", sts.Namespace,
+		"podManagementPolicy", podManagementPolicy,
+	)
+
+	deletePolicy := metav1.DeletePropagationOrphan
+	if err := m.Client.Delete(ctx, sts, &client.DeleteOptions{PropagationPolicy: &deletePolicy}); err != nil {
+		return fmt.Errorf("failed to delete STS: %w", err)
+	}
+
+	if err := wait.PollUntilContextTimeout(ctx, stsPollInterval, stsPollTimeout, true,
+		func(ctx context.Context) (bool, error) {
+			existing := &appsv1.StatefulSet{}
+			err := m.Client.Get(ctx, types.NamespacedName{
+				Name:      sts.Name,
+				Namespace: sts.Namespace,
+			}, existing)
+			if apierrors.IsNotFound(err) {
+				return true, nil
+			}
+			return false, err
+		},
+	); err != nil {
+		return fmt.Errorf("timed out waiting for STS deletion: %w", err)
+	}
+
+	newSTS := sts.DeepCopy()
+	newSTS.ResourceVersion = ""
+	newSTS.UID = ""
+	newSTS.Spec.PodManagementPolicy = podManagementPolicy
+
+	if err := m.Client.Create(ctx, newSTS); err != nil {
+		return fmt.Errorf("failed to recreate STS: %w", err)
+	}
+
+	m.Logger.Info("StatefulSet recreated with policy"+fmt.Sprintf(" [%s]", podManagementPolicy), "name", sts.Name)
+	return nil
 }

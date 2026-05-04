@@ -115,12 +115,28 @@ spec:
                             description: Namespace is the Kubernetes namespace where
                               the target workload resides.
                             type: string
+                          parallelPodManagement:
+                            description: |-
+                              ParallelPodManagement enables parallel pod management for the StatefulSet.
+                              When set to true, all pods are started simultaneously instead of sequentially.
+                              This is useful when restoring from snapshots to minimize oplog divergence between
+                              replica set members, which can cause rollback issues on large datasets.
+                              Defaults to false (OrderedReady behavior).
+                            type: boolean
                           replicas:
                             description: |-
                               Replicas is the desired number of replicas to restore the workload to
                               after the restore process is complete.
                             format: int32
                             type: integer
+                          skipRestoringPVCs:
+                            description: |-
+                              SkipRestoringPVCs is a list of PVC names to skip during restore.
+                              PVCs in this list will not be recreated from snapshots and will retain
+                              their current state. Useful when some volumes do not require restoration.
+                            items:
+                              type: string
+                            type: array
                           type:
                             description: 'Type specifies the workload kind. Supported
                               values: "statefulset", "deployment".'
@@ -132,13 +148,6 @@ spec:
                         - type
                         type: object
                       type: array
-                    lock:
-                      description: |-
-                        Lock controls whether this plan is protected from re-execution.
-                        Once a restore is completed successfully, the plan is locked automatically.
-                        Set to false explicitly to allow the plan to be re-executed.
-                        Defaults to locked behavior if not specified.
-                      type: boolean
                     operators:
                       description: |-
                         Operators defines the list of operator deployments to scale down before restore
@@ -201,12 +210,28 @@ spec:
                             description: Namespace is the Kubernetes namespace where
                               the target workload resides.
                             type: string
+                          parallelPodManagement:
+                            description: |-
+                              ParallelPodManagement enables parallel pod management for the StatefulSet.
+                              When set to true, all pods are started simultaneously instead of sequentially.
+                              This is useful when restoring from snapshots to minimize oplog divergence between
+                              replica set members, which can cause rollback issues on large datasets.
+                              Defaults to false (OrderedReady behavior).
+                            type: boolean
                           replicas:
                             description: |-
                               Replicas is the desired number of replicas to restore the workload to
                               after the restore process is complete.
                             format: int32
                             type: integer
+                          skipRestoringPVCs:
+                            description: |-
+                              SkipRestoringPVCs is a list of PVC names to skip during restore.
+                              PVCs in this list will not be recreated from snapshots and will retain
+                              their current state. Useful when some volumes do not require restoration.
+                            items:
+                              type: string
+                            type: array
                           type:
                             description: 'Type specifies the workload kind. Supported
                               values: "statefulset", "deployment".'
@@ -277,6 +302,10 @@ spec:
                             description: Phase is the current phase of this specific
                               restore target.
                             type: string
+                          podManagementPolicy:
+                            description: PodManagementPolicy is the pod management
+                              policy applied to the StatefulSet during restore.
+                            type: string
                           snapshotsRef:
                             description: SnapshotsRef contains references to the VolumeSnapshots
                               used for restoring this target's PVCs.
@@ -288,6 +317,11 @@ spec:
                                   description: PVCName is the name of the PersistentVolumeClaim
                                     associated with this snapshot.
                                   type: string
+                                skipRestoringPVC:
+                                  description: |-
+                                    SkipRestoringPVC indicates whether PVC restoration was skipped for this target.
+                                    When true, the PVC was not recreated from a snapshot and retains its current state.
+                                  type: boolean
                                 snapshotName:
                                   description: SnapshotName is the name of the VolumeSnapshot
                                     resource used for restore.
@@ -296,6 +330,8 @@ spec:
                                   description: SnapshotUID is the unique identifier
                                     of the VolumeSnapshot resource.
                                   type: string
+                              required:
+                              - skipRestoringPVC
                               type: object
                             type: array
                           type:
@@ -344,6 +380,10 @@ spec:
                             description: Phase is the current phase of this specific
                               restore target.
                             type: string
+                          podManagementPolicy:
+                            description: PodManagementPolicy is the pod management
+                              policy applied to the StatefulSet during restore.
+                            type: string
                           snapshotsRef:
                             description: SnapshotsRef contains references to the VolumeSnapshots
                               used for restoring this target's PVCs.
@@ -355,6 +395,11 @@ spec:
                                   description: PVCName is the name of the PersistentVolumeClaim
                                     associated with this snapshot.
                                   type: string
+                                skipRestoringPVC:
+                                  description: |-
+                                    SkipRestoringPVC indicates whether PVC restoration was skipped for this target.
+                                    When true, the PVC was not recreated from a snapshot and retains its current state.
+                                  type: boolean
                                 snapshotName:
                                   description: SnapshotName is the name of the VolumeSnapshot
                                     resource used for restore.
@@ -363,6 +408,8 @@ spec:
                                   description: SnapshotUID is the unique identifier
                                     of the VolumeSnapshot resource.
                                   type: string
+                              required:
+                              - skipRestoringPVC
                               type: object
                             type: array
                           type:
