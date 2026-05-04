@@ -115,17 +115,14 @@ spec:
                             description: Namespace is the Kubernetes namespace where
                               the target workload resides.
                             type: string
-                          podManagementPolicy:
+                          parallelPodManagement:
                             description: |-
-                              PodManagementPolicy overrides the default StatefulSet pod management policy.
-                              When set to "Parallel", all pods are started simultaneously instead of sequentially.
+                              ParallelPodManagement enables parallel pod management for the StatefulSet.
+                              When set to true, all pods are started simultaneously instead of sequentially.
                               This is useful when restoring from snapshots to minimize oplog divergence between
                               replica set members, which can cause rollback issues on large datasets.
-                              Valid values are "OrderedReady" (default) and "Parallel".
-                            enum:
-                            - OrderedReady
-                            - Parallel
-                            type: string
+                              Defaults to false (OrderedReady behavior).
+                            type: boolean
                           replicas:
                             description: |-
                               Replicas is the desired number of replicas to restore the workload to
@@ -151,13 +148,6 @@ spec:
                         - type
                         type: object
                       type: array
-                    lock:
-                      description: |-
-                        Lock controls whether this plan is protected from re-execution.
-                        Once a restore is completed successfully, the plan is locked automatically.
-                        Set to false explicitly to allow the plan to be re-executed.
-                        Defaults to locked behavior if not specified.
-                      type: boolean
                     operators:
                       description: |-
                         Operators defines the list of operator deployments to scale down before restore
@@ -220,17 +210,14 @@ spec:
                             description: Namespace is the Kubernetes namespace where
                               the target workload resides.
                             type: string
-                          podManagementPolicy:
+                          parallelPodManagement:
                             description: |-
-                              PodManagementPolicy overrides the default StatefulSet pod management policy.
-                              When set to "Parallel", all pods are started simultaneously instead of sequentially.
+                              ParallelPodManagement enables parallel pod management for the StatefulSet.
+                              When set to true, all pods are started simultaneously instead of sequentially.
                               This is useful when restoring from snapshots to minimize oplog divergence between
                               replica set members, which can cause rollback issues on large datasets.
-                              Valid values are "OrderedReady" (default) and "Parallel".
-                            enum:
-                            - OrderedReady
-                            - Parallel
-                            type: string
+                              Defaults to false (OrderedReady behavior).
+                            type: boolean
                           replicas:
                             description: |-
                               Replicas is the desired number of replicas to restore the workload to

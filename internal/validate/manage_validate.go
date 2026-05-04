@@ -45,12 +45,8 @@ func (m *ManageValidate) ValidateListSnapshots(ctx context.Context, obj *ebsv1al
 		m.Logger.Info("Plan", "name", planName)
 
 		if planStatus, ok := obj.Status.RestorePlans[planName]; ok {
-			if planStatus.Lock && (plan.Lock == nil || *plan.Lock) {
+			if planStatus.Lock {
 				lock = planStatus.Lock
-			}
-
-			if plan.Lock != nil && !*plan.Lock {
-				lock = *plan.Lock
 			}
 		}
 
@@ -228,7 +224,7 @@ func (m *ManageValidate) validateSnapshot(ctx context.Context, planName string,
 		}
 
 		if sts.Spec.PodManagementPolicy != "" {
-			clusterStatus.PodManagementPolicy = string(sts.Spec.PodManagementPolicy)
+			clusterStatus.PodManagementPolicy = sts.Spec.PodManagementPolicy
 		}
 
 		pvcList, vsList, err := m.fetchClusterResources(ctx, cluster, planName, plan.SnapshotRestoreTime)

@@ -33,12 +33,6 @@ type RestorePlan struct {
 	// in YYYYMMDDHHMM format (e.g. "202604071537").
 	// If not set, the latest available snapshot will be used automatically.
 	SnapshotRestoreTime string `json:"snapshotRestoreTime,omitempty"`
-
-	// Lock controls whether this plan is protected from re-execution.
-	// Once a restore is completed successfully, the plan is locked automatically.
-	// Set to false explicitly to allow the plan to be re-executed.
-	// Defaults to locked behavior if not specified.
-	Lock *bool `json:"lock,omitempty"`
 }
 
 type RestoreTarget struct {
@@ -65,8 +59,14 @@ type RestoreTarget struct {
 	// This is useful when restoring from snapshots to minimize oplog divergence between
 	// replica set members, which can cause rollback issues on large datasets.
 	// Valid values are "OrderedReady" (default) and "Parallel".
-	// +kubebuilder:validation:Enum=OrderedReady;Parallel
-	PodManagementPolicy string `json:"podManagementPolicy,omitempty"`
+	//PodManagementPolicy string `json:"podManagementPolicy,omitempty"`
+
+	// ParallelPodManagement enables parallel pod management for the StatefulSet.
+	// When set to true, all pods are started simultaneously instead of sequentially.
+	// This is useful when restoring from snapshots to minimize oplog divergence between
+	// replica set members, which can cause rollback issues on large datasets.
+	// Defaults to false (OrderedReady behavior).
+	ParallelPodManagement bool `json:"parallelPodManagement,omitempty"`
 
 	// ClaimSelector is a label selector used to identify PVCs associated with this target.
 	// Required for StatefulSet targets. Not needed for Deployments.

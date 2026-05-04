@@ -41,8 +41,8 @@ func (m *ManageRestore) RestoreFromPlan(ctx context.Context, obj *ebsv1alpha1.EB
 			return err
 		}
 
-		if plan, ok := obj.Spec.RestorePlans[planStatusName]; ok {
-			if planStatus.Lock && (plan.Lock == nil || *plan.Lock) {
+		if _, ok := obj.Spec.RestorePlans[planStatusName]; ok {
+			if planStatus.Lock {
 				continue
 			}
 		}

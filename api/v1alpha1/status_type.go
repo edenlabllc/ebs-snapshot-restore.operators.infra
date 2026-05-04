@@ -1,5 +1,7 @@
 package v1alpha1
 
+import appsv1 "k8s.io/api/apps/v1"
+
 // RestorePhase represents the current phase of a restore operation or target.
 type RestorePhase string
 
@@ -66,7 +68,7 @@ type RestoreTargetStatus struct {
 	SnapshotsRef []RestoreSnapshotRef `json:"snapshotsRef,omitempty"`
 
 	// PodManagementPolicy is the pod management policy applied to the StatefulSet during restore.
-	PodManagementPolicy string `json:"podManagementPolicy,omitempty"`
+	PodManagementPolicy appsv1.PodManagementPolicyType `json:"podManagementPolicy,omitempty"`
 
 	// OriginalReplicas is the number of replicas the workload had before scaling down.
 	// Used to restore the workload to its original desired state after restore.
