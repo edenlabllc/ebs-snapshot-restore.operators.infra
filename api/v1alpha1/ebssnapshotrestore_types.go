@@ -54,13 +54,6 @@ type RestoreTarget struct {
 	// their current state. Useful when some volumes do not require restoration.
 	SkipRestoringPVCs []string `json:"skipRestoringPVCs,omitempty"`
 
-	// PodManagementPolicy overrides the default StatefulSet pod management policy.
-	// When set to "Parallel", all pods are started simultaneously instead of sequentially.
-	// This is useful when restoring from snapshots to minimize oplog divergence between
-	// replica set members, which can cause rollback issues on large datasets.
-	// Valid values are "OrderedReady" (default) and "Parallel".
-	//PodManagementPolicy string `json:"podManagementPolicy,omitempty"`
-
 	// ParallelPodManagement enables parallel pod management for the StatefulSet.
 	// When set to true, all pods are started simultaneously instead of sequentially.
 	// This is useful when restoring from snapshots to minimize oplog divergence between
