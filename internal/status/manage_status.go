@@ -103,7 +103,7 @@ func (m *ManageStatus) SetValidateRestorePlan(ctx context.Context, obj *ebsv1alp
 }
 
 func (m *ManageStatus) SetScaleRestorePlan(ctx context.Context, obj *ebsv1alpha1.EBSSnapshotRestore,
-	planName string, clusters, operators []ebsv1alpha1.RestoreTargetStatus) error {
+	planName string, countScaleUp int32, clusters, operators []ebsv1alpha1.RestoreTargetStatus) error {
 	return m.Patch(ctx, obj, "SetScaleRestorePlan", func(st *ebsv1alpha1.EBSSnapshotRestoreStatus) {
 		if st.RestorePlans == nil {
 			st.RestorePlans = make(map[string]ebsv1alpha1.RestorePlanStatus)
@@ -112,6 +112,7 @@ func (m *ManageStatus) SetScaleRestorePlan(ctx context.Context, obj *ebsv1alpha1
 		existsPlan := st.RestorePlans[planName]
 		existsPlan.Clusters = clusters
 		existsPlan.Operators = operators
+		existsPlan.CountScaleUp = countScaleUp
 		st.RestorePlans[planName] = existsPlan
 	})
 }
