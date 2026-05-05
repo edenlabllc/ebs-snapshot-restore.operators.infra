@@ -23,7 +23,7 @@ const (
 	pollTimeout                = 10 * time.Minute
 	stsPollInterval            = 2 * time.Second
 	stsPollTimeout             = 10 * time.Second
-	scaleUpOperatorWaitTimeout = 10 * time.Second
+	scaleUpOperatorWaitTimeout = 20 * time.Second
 
 	UpScale   = "up"
 	DownScale = "down"
@@ -85,6 +85,10 @@ func (m *ManageScale) ScaleRestorePlan(ctx context.Context, obj *ebsv1alpha1.EBS
 				continue
 			}
 
+			if planStatus.Lock && planStatus.CountScaleUp > 0 && scale == UpScale {
+				continue
+			}
+
 			scaleClustersStatus = make([]ebsv1alpha1.RestoreTargetStatus, len(planStatus.Clusters))
 			copy(scaleClustersStatus, planStatus.Clusters)
 
@@ -95,7 +99,7 @@ func (m *ManageScale) ScaleRestorePlan(ctx context.Context, obj *ebsv1alpha1.EBS
 		switch scale {
 		case UpScale:
 			if err := m.processTargets(ctx, plan.Clusters, scaleClustersStatus, m.scaleClusterUp, UpScale); err != nil {
-				if err := m.Status.SetScaleRestorePlan(ctx, obj, planName, scaleClustersStatus, scaleOperatorsStatus); err != nil {
+				if err := m.Status.SetScaleRestorePlan(ctx, obj, planName, 0, scaleClustersStatus, scaleOperatorsStatus); err != nil {
 					return err
 				}
 
@@ -107,7 +111,7 @@ func (m *ManageScale) ScaleRestorePlan(ctx context.Context, obj *ebsv1alpha1.EBS
 			}
 
 			if err := m.processTargets(ctx, plan.Operators, scaleOperatorsStatus, m.scaleOperatorUp, UpScale); err != nil {
-				if err := m.Status.SetScaleRestorePlan(ctx, obj, planName, scaleClustersStatus, scaleOperatorsStatus); err != nil {
+				if err := m.Status.SetScaleRestorePlan(ctx, obj, planName, 0, scaleClustersStatus, scaleOperatorsStatus); err != nil {
 					return err
 				}
 
@@ -117,9 +121,13 @@ func (m *ManageScale) ScaleRestorePlan(ctx context.Context, obj *ebsv1alpha1.EBS
 
 				return err
 			}
+
+			if err := m.Status.SetScaleRestorePlan(ctx, obj, planName, 1, scaleClustersStatus, scaleOperatorsStatus); err != nil {
+				return err
+			}
 		case DownScale:
 			if err := m.processTargets(ctx, plan.Operators, scaleOperatorsStatus, m.scaleOperatorDown, DownScale); err != nil {
-				if err := m.Status.SetScaleRestorePlan(ctx, obj, planName, scaleClustersStatus, scaleOperatorsStatus); err != nil {
+				if err := m.Status.SetScaleRestorePlan(ctx, obj, planName, 0, scaleClustersStatus, scaleOperatorsStatus); err != nil {
 					return err
 				}
 
@@ -131,7 +139,7 @@ func (m *ManageScale) ScaleRestorePlan(ctx context.Context, obj *ebsv1alpha1.EBS
 			}
 
 			if err := m.processTargets(ctx, plan.Clusters, scaleClustersStatus, m.scaleClusterDown, DownScale); err != nil {
-				if err := m.Status.SetScaleRestorePlan(ctx, obj, planName, scaleClustersStatus, scaleOperatorsStatus); err != nil {
+				if err := m.Status.SetScaleRestorePlan(ctx, obj, planName, 0, scaleClustersStatus, scaleOperatorsStatus); err != nil {
 					return err
 				}
 
@@ -141,10 +149,10 @@ func (m *ManageScale) ScaleRestorePlan(ctx context.Context, obj *ebsv1alpha1.EBS
 
 				return err
 			}
-		}
 
-		if err := m.Status.SetScaleRestorePlan(ctx, obj, planName, scaleClustersStatus, scaleOperatorsStatus); err != nil {
-			return err
+			if err := m.Status.SetScaleRestorePlan(ctx, obj, planName, 0, scaleClustersStatus, scaleOperatorsStatus); err != nil {
+				return err
+			}
 		}
 	}
 

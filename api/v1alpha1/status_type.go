@@ -91,6 +91,9 @@ type RestorePlanStatus struct {
 	// Indicates whether post-restore unlock step has been completed
 	Lock bool `json:"lock,omitempty"`
 
+	// Tracks the number of scale-up attempts performed during restore
+	CountScaleUp int32 `json:"countScaleUp,omitempty"`
+
 	// Progress and state of cluster targets (e.g. StatefulSets)
 	Clusters []RestoreTargetStatus `json:"clusters,omitempty"`
 

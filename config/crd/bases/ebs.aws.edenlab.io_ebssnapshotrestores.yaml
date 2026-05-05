@@ -343,6 +343,11 @@ spec:
                         - originalReplicas
                         type: object
                       type: array
+                    countScaleUp:
+                      description: Tracks the number of scale-up attempts performed
+                        during restore
+                      format: int32
+                      type: integer
                     lock:
                       description: Indicates whether post-restore unlock step has
                         been completed
