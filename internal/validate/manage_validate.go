@@ -47,6 +47,7 @@ func (m *ManageValidate) ValidateListSnapshots(ctx context.Context, obj *ebsv1al
 		if planStatus, ok := obj.Status.RestorePlans[planName]; ok {
 			if planStatus.Lock {
 				lock = planStatus.Lock
+				plan.SnapshotRestoreTime = planStatus.SnapshotRestoreTime
 			}
 		}
 

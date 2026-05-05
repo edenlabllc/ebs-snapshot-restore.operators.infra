@@ -23,7 +23,7 @@ const (
 	pollTimeout                = 10 * time.Minute
 	stsPollInterval            = 2 * time.Second
 	stsPollTimeout             = 10 * time.Second
-	scaleUpOperatorWaitTimeout = 10 * time.Second
+	scaleUpOperatorWaitTimeout = 20 * time.Second
 
 	UpScale   = "up"
 	DownScale = "down"
