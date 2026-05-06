@@ -13,7 +13,7 @@ spec:
           type: statefulset
           replicas: 1
           namespace: db
-          podManagementPolicy: Parallel
+          parallelPodManagement: true
           claimSelector:
             matchLabels:
               release: db
