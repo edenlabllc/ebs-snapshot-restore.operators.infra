@@ -2,6 +2,7 @@ package validate
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,12 +45,9 @@ func (m *ManageValidate) ValidateListSnapshots(ctx context.Context, obj *ebsv1al
 		m.Logger.Info("Plan", "name", planName)
 
 		if planStatus, ok := obj.Status.RestorePlans[planName]; ok {
-			if planStatus.Lock && (plan.Lock == nil || *plan.Lock) {
-				continue
-			}
-
-			if plan.Lock != nil && !*plan.Lock {
-				lock = *plan.Lock
+			if planStatus.Lock {
+				lock = planStatus.Lock
+				plan.SnapshotRestoreTime = planStatus.SnapshotRestoreTime
 			}
 		}
 
@@ -226,6 +224,10 @@ func (m *ManageValidate) validateSnapshot(ctx context.Context, planName string,
 			clusterStatus.CurrentReplicas = *sts.Spec.Replicas
 		}
 
+		if sts.Spec.PodManagementPolicy != "" {
+			clusterStatus.PodManagementPolicy = sts.Spec.PodManagementPolicy
+		}
+
 		pvcList, vsList, err := m.fetchClusterResources(ctx, cluster, planName, plan.SnapshotRestoreTime)
 		if err != nil {
 			return appendFailed(validateClustersStatus, clusterStatus, err), validateOperatorsStatus, err
@@ -240,9 +242,10 @@ func (m *ManageValidate) validateSnapshot(ctx context.Context, planName string,
 					}
 
 					snapshotsRef = append(snapshotsRef, ebsv1alpha1.RestoreSnapshotRef{
-						SnapshotUID:  string(vs.GetUID()),
-						SnapshotName: vs.GetName(),
-						PVCName:      pvc.Name,
+						SnapshotUID:      string(vs.GetUID()),
+						SnapshotName:     vs.GetName(),
+						PVCName:          pvc.Name,
+						SkipRestoringPVC: slices.Contains(cluster.SkipRestoringPVCs, pvc.Name),
 					})
 				}
 			}

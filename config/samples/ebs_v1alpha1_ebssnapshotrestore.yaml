@@ -13,6 +13,7 @@ spec:
           type: statefulset
           replicas: 1
           namespace: db
+          podManagementPolicy: Parallel
           claimSelector:
             matchLabels:
               release: db
@@ -31,6 +32,8 @@ spec:
           type: statefulset
           replicas: 4
           namespace: object-storage
+          skipRestoringPVCs:
+            - export-1-object-storage-3
           claimSelector:
             matchLabels:
               release: object-storage
