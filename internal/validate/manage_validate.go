@@ -236,7 +236,7 @@ func (m *ManageValidate) validateSnapshot(ctx context.Context, planName string,
 		for _, vs := range vsList.Items {
 			for _, pvc := range pvcList.Items {
 				if pvc.Name+"-"+planName+"-"+plan.SnapshotRestoreTime == vs.Name {
-					if vs.Status.ReadyToUse == nil || !*vs.Status.ReadyToUse {
+					if vs.Status == nil || vs.Status.ReadyToUse == nil || !*vs.Status.ReadyToUse {
 						err := fmt.Errorf("snapshot %s is not ready to use", vs.Name)
 						return appendFailed(validateClustersStatus, clusterStatus, err), validateOperatorsStatus, err
 					}
