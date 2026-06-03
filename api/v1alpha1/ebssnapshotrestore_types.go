@@ -54,6 +54,17 @@ type RestoreTarget struct {
 	// their current state. Useful when some volumes do not require restoration.
 	SkipRestoringPVCs []string `json:"skipRestoringPVCs,omitempty"`
 
+	// SkipWaitScaleDown skips waiting for StatefulSet or Deployment scale-down during restore.
+	// When enabled, the restore process will not wait for pods
+	// to terminate after scaling down, proceeding immediately to the next step.
+	SkipWaitScaleDown bool `json:"skipWaitScaleDown,omitempty"`
+
+	// SkipWaitScaleUp skips waiting for StatefulSet or Deployment scale-up during restore.
+	// When enabled, the restore process will not wait for pods
+	// to become ready after scaling up, proceeding immediately to the next step.
+	// Cannot be used together with ParallelPodManagement.
+	SkipWaitScaleUp bool `json:"skipWaitScaleUp,omitempty"`
+
 	// ParallelPodManagement enables parallel pod management for the StatefulSet.
 	// When set to true, all pods are started simultaneously instead of sequentially.
 	// This is useful when restoring from snapshots to minimize oplog divergence between
