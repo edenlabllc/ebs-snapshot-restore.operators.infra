@@ -177,6 +177,16 @@ func (m *ManageScale) scaleClusterDown(ctx context.Context, cluster *ebsv1alpha1
 		}
 	}
 
+	if cluster.SkipWaitScaleDown {
+		m.Logger.Info("Skipping StatefulSet scale-down wait",
+			"cluster", cluster.Name,
+			"readyReplicas", sts.Status.ReadyReplicas,
+			"expectedReplicas", 0,
+		)
+
+		return nil
+	}
+
 	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true,
 		func(ctx context.Context) (bool, error) {
 			if err := m.Client.Get(ctx, types.NamespacedName{
@@ -202,6 +212,10 @@ func (m *ManageScale) scaleClusterDown(ctx context.Context, cluster *ebsv1alpha1
 }
 
 func (m *ManageScale) scaleClusterUp(ctx context.Context, cluster *ebsv1alpha1.RestoreTarget) error {
+	if cluster.SkipWaitScaleUp && cluster.ParallelPodManagement {
+		return fmt.Errorf("skipWaitScaleUp and parallelPodManagement cannot be used together")
+	}
+
 	sts := &appsv1.StatefulSet{}
 	if err := m.Client.Get(ctx, types.NamespacedName{
 		Name:      cluster.Name,
@@ -223,6 +237,16 @@ func (m *ManageScale) scaleClusterUp(ctx context.Context, cluster *ebsv1alpha1.R
 		if err := m.Client.Patch(ctx, sts, baseSTS); err != nil {
 			return err
 		}
+	}
+
+	if cluster.SkipWaitScaleUp {
+		m.Logger.Info("Skipping StatefulSet scale-up wait",
+			"cluster", cluster.Name,
+			"readyReplicas", sts.Status.ReadyReplicas,
+			"expectedReplicas", cluster.Replicas,
+		)
+
+		return nil
 	}
 
 	if err := wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true,
@@ -301,6 +325,16 @@ func (m *ManageScale) scaleOperatorDown(ctx context.Context, operator *ebsv1alph
 		}
 	}
 
+	if operator.SkipWaitScaleDown {
+		m.Logger.Info("Skipping Deployment scale-down wait",
+			"cluster", operator.Name,
+			"readyReplicas", deployment.Status.ReadyReplicas,
+			"expectedReplicas", 0,
+		)
+
+		return nil
+	}
+
 	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true,
 		func(ctx context.Context) (bool, error) {
 			if err := m.Client.Get(ctx, types.NamespacedName{
@@ -342,6 +376,16 @@ func (m *ManageScale) scaleOperatorUp(ctx context.Context, operator *ebsv1alpha1
 		if err := m.Client.Patch(ctx, deployment, baseDeployment); err != nil {
 			return err
 		}
+	}
+
+	if operator.SkipWaitScaleUp {
+		m.Logger.Info("Skipping Deployment scale-up wait",
+			"cluster", operator.Name,
+			"readyReplicas", deployment.Status.ReadyReplicas,
+			"expectedReplicas", operator.Replicas,
+		)
+
+		return nil
 	}
 
 	return wait.PollUntilContextTimeout(ctx, pollInterval, pollTimeout, true,
