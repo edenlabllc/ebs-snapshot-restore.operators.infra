@@ -29,6 +29,14 @@ type RestorePlan struct {
 	// and scale up after restore is complete. Optional.
 	Operators []RestoreTarget `json:"operators,omitempty"`
 
+	// Hooks defines a set of hook jobs to execute at specific points during the restore process.
+	// Each hook is a Kubernetes Job that runs a container with the specified image and command.
+	// Hooks can be triggered on pre-restore or post-restore events, allowing custom logic
+	// to be executed before or after the restore process, such as detaching parts,
+	// stopping services or performing data validation.
+	// If not set, no hook jobs will be executed. Optional.
+	Hooks map[string]*HookSettings `json:"hooks,omitempty"`
+
 	// SnapshotRestoreTime specifies the exact snapshot timestamp to restore from,
 	// in YYYYMMDDHHMM format (e.g. "202604071537").
 	// If not set, the latest available snapshot will be used automatically.
@@ -64,6 +72,13 @@ type RestoreTarget struct {
 	// to become ready after scaling up, proceeding immediately to the next step.
 	// Cannot be used together with ParallelPodManagement.
 	SkipWaitScaleUp bool `json:"skipWaitScaleUp,omitempty"`
+
+	// PVCStorageClass overrides the StorageClass used when restoring PersistentVolumeClaims.
+	// When set, the restored PVCs will use the specified StorageClass instead of the original one.
+	// Useful when restoring to a non-default StorageClass, for example one with
+	// volumeInitializationRate support for faster disk initialization.
+	// If not set, the StorageClass from the original PVC will be used.
+	PVCStorageClass *string `json:"pvcStorageClass,omitempty"`
 
 	// ParallelPodManagement enables parallel pod management for the StatefulSet.
 	// When set to true, all pods are started simultaneously instead of sequentially.

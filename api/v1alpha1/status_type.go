@@ -1,6 +1,8 @@
 package v1alpha1
 
-import appsv1 "k8s.io/api/apps/v1"
+import (
+	appsv1 "k8s.io/api/apps/v1"
+)
 
 // RestorePhase represents the current phase of a restore operation or target.
 type RestorePhase string
@@ -27,6 +29,14 @@ const (
 	// PhaseScaledDown indicates that the target workload has been successfully scaled down to zero.
 	PhaseScaledDown RestorePhase = "ScaledDown"
 
+	// PhaseRunningPreHooks indicates pre-restore hook jobs are currently executing,
+	// before the snapshot restore itself begins.
+	PhaseRunningPreHooks RestorePhase = "RunningPreHooks"
+
+	// PhaseRunningPostHooks indicates post-restore hook jobs are currently executing,
+	// after the snapshot restore has completed.
+	PhaseRunningPostHooks RestorePhase = "RunningPostHooks"
+
 	// PhaseScalingUp indicates that the target workload is currently being scaled back up to original replicas.
 	PhaseScalingUp RestorePhase = "ScalingUp"
 
@@ -37,10 +47,42 @@ const (
 	PhaseValidating RestorePhase = "Validating"
 )
 
+// RestoreHookStatus reflects the execution result of a single hook job.
+type RestoreHookStatus struct {
+	// Name is the name of the hook Job resource.
+	Name string `json:"name"`
+
+	// Namespace is the namespace where the hook Job was created.
+	Namespace string `json:"namespace"`
+
+	// Checksum is the hash of Command and Args used in the last execution.
+	// Used together with Mutable to detect changes and trigger a rerun.
+	Checksum string `json:"checksum,omitempty"`
+
+	// Event is the restore lifecycle point at which this hook was triggered.
+	Event Event `json:"event,omitempty"`
+
+	// Failed is the number of times this hook job failed.
+	Failed int32 `json:"failed,omitempty"`
+
+	// Image is the container image used to run the hook job.
+	Image string `json:"image,omitempty"`
+
+	// RestartPolicy is the restart policy applied to the hook job container.
+	RestartPolicy Policy `json:"restartPolicy,omitempty"`
+
+	// Succeeded is the number of times this hook job completed successfully.
+	Succeeded int32 `json:"succeeded,omitempty"`
+}
+
 // RestoreSnapshotRef holds a reference to a VolumeSnapshot associated with a specific PVC.
 type RestoreSnapshotRef struct {
 	// PVCName is the name of the PersistentVolumeClaim associated with this snapshot.
 	PVCName string `json:"pvcName,omitempty"`
+
+	// PVCStorageClass is the StorageClass used when restoring this PVC.
+	// Nil if the original StorageClass was used.
+	PVCStorageClass *string `json:"pvcStorageClass,omitempty"`
 
 	// SnapshotUID is the unique identifier of the VolumeSnapshot resource.
 	SnapshotUID string `json:"snapshotUID,omitempty"`
@@ -85,18 +127,21 @@ type RestoreTargetStatus struct {
 }
 
 type RestorePlanStatus struct {
-	// Snapshot timestamp used for restore (logical restore point)
+	// Snapshot timestamp used for restore (logical restore point).
 	SnapshotRestoreTime string `json:"snapshotRestoreTime,omitempty"`
 
-	// Indicates whether post-restore unlock step has been completed
+	// Indicates whether post-restore unlock step has been completed.
 	Lock bool `json:"lock,omitempty"`
 
-	// Tracks the number of scale-up attempts performed during restore
+	// Tracks the number of scale-up attempts performed during restore.
 	CountScaleUp int32 `json:"countScaleUp,omitempty"`
 
-	// Progress and state of cluster targets (e.g. StatefulSets)
+	// Progress and state of cluster targets (e.g. StatefulSets).
 	Clusters []RestoreTargetStatus `json:"clusters,omitempty"`
 
-	// Progress and state of operator components (e.g. Deployments)
+	// Progress and state of operator components (e.g. Deployments).
 	Operators []RestoreTargetStatus `json:"operators,omitempty"`
+
+	// Hooks contains the execution status of all hook jobs triggered during this plan's restore.
+	Hooks []RestoreHookStatus `json:"hooks,omitempty"`
 }

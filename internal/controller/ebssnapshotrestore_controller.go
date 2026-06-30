@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	ebsv1alpha1 "ebs-snapshot-restore.operators.infra/api/v1alpha1"
+	"ebs-snapshot-restore.operators.infra/internal/hooks"
 	"ebs-snapshot-restore.operators.infra/internal/restore"
 	"ebs-snapshot-restore.operators.infra/internal/scale"
 	"ebs-snapshot-restore.operators.infra/internal/status"
@@ -54,6 +55,7 @@ func (r *EBSSnapshotRestoreReconciler) Reconcile(ctx context.Context, req ctrl.R
 	reqLogger := logf.FromContext(ctx)
 	statusMgr := status.New(r.Client, r.Scheme, reqLogger)
 	validateMgr := validate.New(r.Client, r.Scheme, reqLogger, statusMgr)
+	hooksMgr := hooks.New(r.Client, r.Scheme, reqLogger, statusMgr)
 	restoreMgr := restore.New(r.Client, r.Scheme, reqLogger, statusMgr)
 	scaleMgr := scale.New(r.Client, r.Scheme, reqLogger, statusMgr)
 
@@ -79,6 +81,22 @@ func (r *EBSSnapshotRestoreReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
+	preHooksList, err := hooksMgr.SetupRestoreHooks(ebsv1alpha1.PreRestore, eSR)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if len(preHooksList) > 0 {
+		if err := statusMgr.SetPhase(ctx, eSR, ebsv1alpha1.PhaseRunningPreHooks); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if err := hooksMgr.RunHooks(ctx, preHooksList, eSR); err != nil {
+			reqLogger.Error(err, "failed to run pre-restore hooks")
+			return ctrl.Result{RequeueAfter: frequency}, nil
+		}
+	}
+
 	if err := statusMgr.SetPhase(ctx, eSR, ebsv1alpha1.PhaseScalingDown); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -101,6 +119,22 @@ func (r *EBSSnapshotRestoreReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	if err := scaleMgr.ScaleRestorePlan(ctx, eSR, scale.UpScale); err != nil {
 		return ctrl.Result{}, err
+	}
+
+	postHooksList, err := hooksMgr.SetupRestoreHooks(ebsv1alpha1.PostRestore, eSR)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if len(postHooksList) > 0 {
+		if err := statusMgr.SetPhase(ctx, eSR, ebsv1alpha1.PhaseRunningPostHooks); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if err := hooksMgr.RunHooks(ctx, postHooksList, eSR); err != nil {
+			reqLogger.Error(err, "failed to run post-restore hooks")
+			return ctrl.Result{RequeueAfter: frequency}, nil
+		}
 	}
 
 	if err := statusMgr.SetPhase(ctx, eSR, ebsv1alpha1.PhaseCompleted); err != nil {

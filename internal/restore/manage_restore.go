@@ -57,7 +57,7 @@ func (m *ManageRestore) RestoreFromPlan(ctx context.Context, obj *ebsv1alpha1.EB
 					continue
 				}
 
-				if err := m.restorePVC(ctx, cluster.Namespace, snap.PVCName, snap.SnapshotName); err != nil {
+				if err := m.restorePVC(ctx, cluster.Namespace, snap); err != nil {
 					clusters[key].Phase = ebsv1alpha1.PhaseFailed
 					clusters[key].Error = err.Error()
 					if err := m.Status.SetRestoreFromPlan(ctx, obj, planStatusName, false, clusters, planStatus.Operators); err != nil {
@@ -83,36 +83,36 @@ func (m *ManageRestore) RestoreFromPlan(ctx context.Context, obj *ebsv1alpha1.EB
 	return nil
 }
 
-func (m *ManageRestore) restorePVC(ctx context.Context, namespace string, pvcName string, snapshotName string) error {
+func (m *ManageRestore) restorePVC(ctx context.Context, namespace string, rSnapRef ebsv1alpha1.RestoreSnapshotRef) error {
 	existsPVC := &v1.PersistentVolumeClaim{}
-	log := m.Logger.WithValues("pvc", pvcName, "ns", namespace)
+	log := m.Logger.WithValues("pvc", rSnapRef.PVCName, "ns", namespace)
 
-	err := m.Client.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: namespace}, existsPVC)
+	err := m.Client.Get(ctx, types.NamespacedName{Name: rSnapRef.PVCName, Namespace: namespace}, existsPVC)
 	if err != nil && !errors.IsNotFound(err) {
 		return err
 	}
 
-	newPVC := buildPVCFromExisting(existsPVC, snapshotName)
+	newPVC := buildPVCFromExisting(existsPVC, rSnapRef)
 
 	if err == nil {
-		log.Info("Deleting existing PVC", "name", pvcName)
+		log.Info("Deleting existing PVC", "name", rSnapRef.PVCName)
 
 		if err := m.Client.Delete(ctx, existsPVC); err != nil {
 			return err
 		}
 
-		if err := m.waitPVCDeleted(ctx, pvcName, namespace); err != nil {
+		if err := m.waitPVCDeleted(ctx, rSnapRef.PVCName, namespace); err != nil {
 			return err
 		}
 	}
 
-	log.Info("Creating PVC from snapshot", "name", snapshotName)
+	log.Info("Creating PVC from snapshot", "name", rSnapRef.SnapshotName)
 	if err := m.Client.Create(ctx, newPVC); err != nil {
 		return err
 	}
 
 	log.Info("Waiting for PV to be provisioned")
-	pvName, err := m.waitPVProvisioned(ctx, pvcName, namespace, newPVC.UID)
+	pvName, err := m.waitPVProvisioned(ctx, rSnapRef.PVCName, namespace, newPVC.UID)
 	if err != nil {
 		return err
 	}
@@ -124,7 +124,7 @@ func (m *ManageRestore) restorePVC(ctx context.Context, namespace string, pvcNam
 		return err
 	}
 
-	if err := m.waitPVCBound(ctx, pvcName, namespace); err != nil {
+	if err := m.waitPVCBound(ctx, rSnapRef.PVCName, namespace); err != nil {
 		return err
 	}
 
@@ -133,7 +133,7 @@ func (m *ManageRestore) restorePVC(ctx context.Context, namespace string, pvcNam
 	return nil
 }
 
-func buildPVCFromExisting(existsPVC *v1.PersistentVolumeClaim, snapshotName string) *v1.PersistentVolumeClaim {
+func buildPVCFromExisting(existsPVC *v1.PersistentVolumeClaim, rSnapRef ebsv1alpha1.RestoreSnapshotRef) *v1.PersistentVolumeClaim {
 	meta := *existsPVC.ObjectMeta.DeepCopy()
 
 	meta.ResourceVersion = ""
@@ -148,13 +148,13 @@ func buildPVCFromExisting(existsPVC *v1.PersistentVolumeClaim, snapshotName stri
 		ObjectMeta: meta,
 		Spec: v1.PersistentVolumeClaimSpec{
 			AccessModes:      existsPVC.Spec.AccessModes,
-			StorageClassName: existsPVC.Spec.StorageClassName,
+			StorageClassName: rSnapRef.PVCStorageClass,
 			Resources:        existsPVC.Spec.Resources,
 			VolumeMode:       existsPVC.Spec.VolumeMode,
 			DataSource: &v1.TypedLocalObjectReference{
 				APIGroup: pointer.String("snapshot.storage.k8s.io"),
 				Kind:     "VolumeSnapshot",
-				Name:     snapshotName,
+				Name:     rSnapRef.SnapshotName,
 			},
 		},
 	}
