@@ -13,11 +13,38 @@ spec:
           type: statefulset
           replicas: 1
           namespace: db
+          pvcStorageClass: gp3-restore
           parallelPodManagement: true
           skipWaitScaleUp: true
           claimSelector:
             matchLabels:
               release: db
+
+      hooks:
+        preHook:
+          events:
+            - pre-restore
+          command: [ "bash", "-c" ]
+          args:
+            - |
+              set  -e
+              echo "Hello"
+          image: "ubuntu"
+          extraSecrets:
+            - name: db-cluster-secret
+        postHook:
+          events:
+            - post-restore
+          command: [ "bash", "-c" ]
+          args:
+            - |
+              set  -e
+              env | grep "DB_CREDENTIALS"
+          image: "ubuntu"
+          mutable: true
+          extraSecrets:
+            - name: db-cluster-secret
+              prefix: DB_CREDENTIALS
 
       operators:
         - name: operator

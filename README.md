@@ -29,8 +29,19 @@ The operator manages the full restore lifecycle through the `EBSSnapshotRestore`
    and waits for all pods to become ready.
 
 5. **Lock** — once a restore plan completes successfully, it is locked to prevent
-   accidental re-execution. The lock can be explicitly released by setting `lock: false`
-   in the restore plan spec.
+   accidental re-execution.
+
+6. **Hooks** — runs custom Job-based hooks at `pre-restore` (before Scale Down) and
+   `post-restore` (after Scale Up) points in the lifecycle, for workarounds the
+   workload can't perform on its own (e.g. detaching/reattaching parts, running
+   migrations). Each hook is tracked independently in status by name and event,
+   so a hook is only re-run if it previously failed or hasn't run yet — successful
+   hooks are skipped on subsequent reconciles, same as the rest of the restore plan
+   once locked. Hooks can optionally pull environment variables from Secrets
+   (`extraSecrets`), and can be marked `mutable` so that changing their `command`/`args`
+   triggers a re-run on `post-restore` even after a previous success — useful for
+   hooks that need to evolve over time (e.g. evolving migration scripts) without
+   forcing a full restore.
 
 ### Supported workload types
 - `statefulset` — primary restore target with PVC management

@@ -241,10 +241,16 @@ func (m *ManageValidate) validateSnapshot(ctx context.Context, planName string,
 						return appendFailed(validateClustersStatus, clusterStatus, err), validateOperatorsStatus, err
 					}
 
+					pvcStorageClass := pvc.Spec.StorageClassName
+					if cluster.PVCStorageClass != nil && *cluster.PVCStorageClass != "" {
+						pvcStorageClass = cluster.PVCStorageClass
+					}
+
 					snapshotsRef = append(snapshotsRef, ebsv1alpha1.RestoreSnapshotRef{
 						SnapshotUID:      string(vs.GetUID()),
 						SnapshotName:     vs.GetName(),
 						PVCName:          pvc.Name,
+						PVCStorageClass:  pvcStorageClass,
 						SkipRestoringPVC: slices.Contains(cluster.SkipRestoringPVCs, pvc.Name),
 					})
 				}

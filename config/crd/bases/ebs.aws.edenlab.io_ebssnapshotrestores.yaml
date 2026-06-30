@@ -123,6 +123,14 @@ spec:
                               replica set members, which can cause rollback issues on large datasets.
                               Defaults to false (OrderedReady behavior).
                             type: boolean
+                          pvcStorageClass:
+                            description: |-
+                              PVCStorageClass overrides the StorageClass used when restoring PersistentVolumeClaims.
+                              When set, the restored PVCs will use the specified StorageClass instead of the original one.
+                              Useful when restoring to a non-default StorageClass, for example one with
+                              volumeInitializationRate support for faster disk initialization.
+                              If not set, the StorageClass from the original PVC will be used.
+                            type: string
                           replicas:
                             description: |-
                               Replicas is the desired number of replicas to restore the workload to
@@ -161,6 +169,86 @@ spec:
                         - type
                         type: object
                       type: array
+                    hooks:
+                      additionalProperties:
+                        properties:
+                          args:
+                            description: Args are the arguments passed to the container
+                              command.
+                            items:
+                              type: string
+                            type: array
+                          command:
+                            description: Command is the entrypoint executed in the
+                              container.
+                            items:
+                              type: string
+                            type: array
+                          events:
+                            description: Events defines the restore lifecycle points
+                              at which this hook is triggered.
+                            items:
+                              description: Event defines the restore lifecycle point
+                                at which a hook job is triggered.
+                              enum:
+                              - pre-restore
+                              - post-restore
+                              type: string
+                            type: array
+                          extraSecrets:
+                            description: |-
+                              ExtraSecrets references Secrets whose keys are injected into the hook job
+                              container as environment variables, each prefixed to indicate origin.
+                            items:
+                              description: |-
+                                ExtraSecretRef references a Secret whose keys are injected into the hook job
+                                container as environment variables. Each key is exposed as PREFIX_KEY,
+                                where PREFIX defaults to the secret name in upper snake case if not set.
+                              properties:
+                                name:
+                                  description: Name is the name of the Secret in the
+                                    same namespace.
+                                  type: string
+                                prefix:
+                                  description: |-
+                                    Prefix is prepended to each env var name derived from the Secret's keys.
+                                    Defaults to the Secret name converted to UPPER_SNAKE_CASE with a trailing underscore.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                          image:
+                            description: Image is the container image used to run
+                              the hook job.
+                            type: string
+                          mutable:
+                            description: |-
+                              Mutable allows the hook job to be re-executed when its Command or Args change,
+                              even if a previous run already succeeded. A checksum of Command and Args is
+                              stored in status; on mismatch, the hook is treated as not succeeded and reruns.
+                              Only honored for hooks triggered on the post-restore event; ignored otherwise.
+                            type: boolean
+                          restartPolicy:
+                            description: |-
+                              RestartPolicy defines the restart behavior of the hook job container.
+                              Defaults to Never.
+                            enum:
+                            - Never
+                            - OnFailure
+                            type: string
+                        required:
+                        - events
+                        - image
+                        type: object
+                      description: |-
+                        Hooks defines a set of hook jobs to execute at specific points during the restore process.
+                        Each hook is a Kubernetes Job that runs a container with the specified image and command.
+                        Hooks can be triggered on pre-restore or post-restore events, allowing custom logic
+                        to be executed before or after the restore process, such as detaching parts,
+                        stopping services or performing data validation.
+                        If not set, no hook jobs will be executed. Optional.
+                      type: object
                     operators:
                       description: |-
                         Operators defines the list of operator deployments to scale down before restore
@@ -231,6 +319,14 @@ spec:
                               replica set members, which can cause rollback issues on large datasets.
                               Defaults to false (OrderedReady behavior).
                             type: boolean
+                          pvcStorageClass:
+                            description: |-
+                              PVCStorageClass overrides the StorageClass used when restoring PersistentVolumeClaims.
+                              When set, the restored PVCs will use the specified StorageClass instead of the original one.
+                              Useful when restoring to a non-default StorageClass, for example one with
+                              volumeInitializationRate support for faster disk initialization.
+                              If not set, the StorageClass from the original PVC will be used.
+                            type: string
                           replicas:
                             description: |-
                               Replicas is the desired number of replicas to restore the workload to
@@ -297,7 +393,7 @@ spec:
                 additionalProperties:
                   properties:
                     clusters:
-                      description: Progress and state of cluster targets (e.g. StatefulSets)
+                      description: Progress and state of cluster targets (e.g. StatefulSets).
                       items:
                         description: RestoreTargetStatus reflects the observed state
                           of a single restore target (StatefulSet or Deployment).
@@ -342,6 +438,11 @@ spec:
                                 pvcName:
                                   description: PVCName is the name of the PersistentVolumeClaim
                                     associated with this snapshot.
+                                  type: string
+                                pvcStorageClass:
+                                  description: |-
+                                    PVCStorageClass is the StorageClass used when restoring this PVC.
+                                    Nil if the original StorageClass was used.
                                   type: string
                                 skipRestoringPVC:
                                   description: |-
@@ -371,16 +472,65 @@ spec:
                       type: array
                     countScaleUp:
                       description: Tracks the number of scale-up attempts performed
-                        during restore
+                        during restore.
                       format: int32
                       type: integer
+                    hooks:
+                      description: Hooks contains the execution status of all hook
+                        jobs triggered during this plan's restore.
+                      items:
+                        description: RestoreHookStatus reflects the execution result
+                          of a single hook job.
+                        properties:
+                          checksum:
+                            description: |-
+                              Checksum is the hash of Command and Args used in the last execution.
+                              Used together with Mutable to detect changes and trigger a rerun.
+                            type: string
+                          event:
+                            description: Event is the restore lifecycle point at which
+                              this hook was triggered.
+                            enum:
+                            - pre-restore
+                            - post-restore
+                            type: string
+                          failed:
+                            description: Failed is the number of times this hook job
+                              failed.
+                            format: int32
+                            type: integer
+                          image:
+                            description: Image is the container image used to run
+                              the hook job.
+                            type: string
+                          name:
+                            description: Name is the name of the hook Job resource.
+                            type: string
+                          namespace:
+                            description: Namespace is the namespace where the hook
+                              Job was created.
+                            type: string
+                          restartPolicy:
+                            description: RestartPolicy is the restart policy applied
+                              to the hook job container.
+                            type: string
+                          succeeded:
+                            description: Succeeded is the number of times this hook
+                              job completed successfully.
+                            format: int32
+                            type: integer
+                        required:
+                        - name
+                        - namespace
+                        type: object
+                      type: array
                     lock:
                       description: Indicates whether post-restore unlock step has
-                        been completed
+                        been completed.
                       type: boolean
                     operators:
                       description: Progress and state of operator components (e.g.
-                        Deployments)
+                        Deployments).
                       items:
                         description: RestoreTargetStatus reflects the observed state
                           of a single restore target (StatefulSet or Deployment).
@@ -426,6 +576,11 @@ spec:
                                   description: PVCName is the name of the PersistentVolumeClaim
                                     associated with this snapshot.
                                   type: string
+                                pvcStorageClass:
+                                  description: |-
+                                    PVCStorageClass is the StorageClass used when restoring this PVC.
+                                    Nil if the original StorageClass was used.
+                                  type: string
                                 skipRestoringPVC:
                                   description: |-
                                     SkipRestoringPVC indicates whether PVC restoration was skipped for this target.
@@ -454,7 +609,7 @@ spec:
                       type: array
                     snapshotRestoreTime:
                       description: Snapshot timestamp used for restore (logical restore
-                        point)
+                        point).
                       type: string
                   type: object
                 description: Detailed status for each restore plan
