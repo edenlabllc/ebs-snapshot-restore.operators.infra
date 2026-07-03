@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"golang.org/x/sync/errgroup"
+	"k8s.io/apimachinery/pkg/util/json"
 	"sort"
 	"strings"
 	"time"
@@ -203,17 +204,22 @@ func (m *ManageHooks) RunHooks(ctx context.Context, hooks []hookJobSettings, obj
 				continue
 			}
 
-			m.logMutationStatus(obj, planName, hook.Name, hook.Event, hook.Mutable, hook.Checksum)
+			resolved, err := m.resolveHookFromConfigMap(ctx, hook)
+			if err != nil {
+				return err
+			}
 
-			skip, reason := hookSkipReason(obj, planName, hook.Name, hook.Event, hook.Mutable, hook.Checksum)
+			m.logMutationStatus(obj, planName, resolved.Name, resolved.Event, resolved.Mutable, resolved.Checksum)
+
+			skip, reason := hookSkipReason(obj, planName, resolved.Name, resolved.Event, resolved.Mutable, resolved.Checksum)
 			if skip {
-				m.Logger.Info("hook job skipped", "name", hook.Name, "event", hook.Event, "reason", reason)
+				m.Logger.Info("hook job skipped", "name", resolved.Name, "event", resolved.Event, "reason", reason)
 				continue
 			}
 
-			m.Logger.Info("hook job will run", "name", hook.Name, "event", hook.Event, "reason", reason)
+			m.Logger.Info("hook job will run", "name", resolved.Name, "event", resolved.Event, "reason", reason)
 
-			pending = append(pending, hook)
+			pending = append(pending, resolved)
 		}
 
 		if err := m.runPlanHooks(ctx, obj, planName, pending); err != nil {
@@ -355,6 +361,20 @@ func (m *ManageHooks) buildJob(ctx context.Context, h hookJobSettings) (*batchv1
 		Args:    h.Args,
 	}
 
+	container.Env = append(container.Env,
+		v1.EnvVar{
+			Name: "NODE_NAME",
+			ValueFrom: &v1.EnvVarSource{
+				FieldRef: &v1.ObjectFieldSelector{
+					FieldPath: "spec.nodeName",
+				},
+			},
+		},
+		v1.EnvVar{Name: "RESTORE_PLAN_NAME", Value: h.PlanName},
+		v1.EnvVar{Name: "RESTORE_EVENT", Value: string(h.Event)},
+		v1.EnvVar{Name: "RESTORE_CR_NAME", Value: h.OwnerMeta.Name},
+	)
+
 	for _, secret := range h.ExtraSecrets {
 		prefix := secret.Prefix
 		if prefix == "" {
@@ -369,20 +389,6 @@ func (m *ManageHooks) buildJob(ctx context.Context, h hookJobSettings) (*batchv1
 				LocalObjectReference: v1.LocalObjectReference{Name: secret.Name},
 			},
 		})
-
-		container.Env = append(container.Env,
-			v1.EnvVar{
-				Name: "NODE_NAME",
-				ValueFrom: &v1.EnvVarSource{
-					FieldRef: &v1.ObjectFieldSelector{
-						FieldPath: "spec.nodeName",
-					},
-				},
-			},
-			v1.EnvVar{Name: "RESTORE_PLAN_NAME", Value: h.PlanName},
-			v1.EnvVar{Name: "RESTORE_EVENT", Value: string(h.Event)},
-			v1.EnvVar{Name: "RESTORE_CR_NAME", Value: h.OwnerMeta.Name},
-		)
 	}
 
 	restartPolicy := h.RestartPolicy
@@ -615,11 +621,26 @@ func (m *ManageHooks) executeHookJob(ctx context.Context, hook hookJobSettings) 
 	hookStatus := ebsv1alpha1.RestoreHookStatus{
 		Name:          hook.Name,
 		Namespace:     hook.Namespace,
-		Checksum:      hook.Checksum,
 		Event:         hook.Event,
 		Image:         hook.Image,
 		RestartPolicy: hook.RestartPolicy,
 	}
+
+	// ensure ConfigMap exists with original Command/Args
+	if err := m.ensureHookConfigMap(ctx, hook); err != nil {
+		return hookStatus, fmt.Errorf("ensure hook configmap %s: %w", hook.Name, err)
+	}
+
+	// always read Command/Args from ConfigMap — not from spec
+	command, args, checksum, err := m.readHookConfigMap(ctx, hook)
+	if err != nil {
+		return hookStatus, err
+	}
+
+	hook.Command = command
+	hook.Args = args
+	hook.Checksum = checksum
+	hookStatus.Checksum = checksum
 
 	job, err := m.buildJob(ctx, hook)
 	if err != nil {
@@ -681,16 +702,21 @@ func (m *ManageHooks) runNodeAccessHook(ctx context.Context, obj *ebsv1alpha1.EB
 		perNode.Name = perNodeJobName(hook.Name, nodeName)
 		perNode.ResolvedNodeName = nodeName
 
-		m.logMutationStatus(obj, planName, perNode.Name, perNode.Event, perNode.Mutable, perNode.Checksum)
+		resolved, err := m.resolveHookFromConfigMap(ctx, perNode)
+		if err != nil {
+			return err
+		}
 
-		skip, reason := hookSkipReason(obj, planName, perNode.Name, perNode.Event, perNode.Mutable, perNode.Checksum)
+		m.logMutationStatus(obj, planName, resolved.Name, resolved.Event, resolved.Mutable, resolved.Checksum)
+
+		skip, reason := hookSkipReason(obj, planName, resolved.Name, resolved.Event, resolved.Mutable, resolved.Checksum)
 		if skip {
-			m.Logger.Info("per-node hook job skipped", "name", perNode.Name, "node", nodeName, "reason", reason)
+			m.Logger.Info("per-node hook job skipped", "name", resolved.Name, "node", nodeName, "reason", reason)
 			continue
 		}
 
-		m.Logger.Info("per-node hook job will run", "name", perNode.Name, "node", nodeName, "reason", reason)
-		pendingNodes = append(pendingNodes, perNode)
+		m.Logger.Info("per-node hook job will run", "name", resolved.Name, "node", nodeName, "reason", reason)
+		pendingNodes = append(pendingNodes, resolved)
 	}
 
 	if len(pendingNodes) == 0 {
@@ -702,7 +728,6 @@ func (m *ManageHooks) runNodeAccessHook(ctx context.Context, obj *ebsv1alpha1.EB
 	g, gctx := errgroup.WithContext(ctx)
 
 	for i, perNode := range pendingNodes {
-		i, perNode := i, perNode
 		g.Go(func() error {
 			hookStatus, err := m.executeHookJob(gctx, perNode)
 			results[i] = hookStatus
@@ -721,4 +746,135 @@ func (m *ManageHooks) runNodeAccessHook(ctx context.Context, obj *ebsv1alpha1.EB
 	}
 
 	return waitErr
+}
+
+// ensureHookConfigMap creates or updates a ConfigMap that stores the original
+// Command and Args for this hook. For non-mutable hooks the ConfigMap is
+// immutable — preventing args changes in spec from taking effect until the
+// CR is recreated. For mutable hooks it is updated when args change.
+func (m *ManageHooks) ensureHookConfigMap(ctx context.Context, h hookJobSettings) error {
+	existing := &v1.ConfigMap{}
+	err := m.Client.Get(ctx, types.NamespacedName{
+		Name:      h.Name,
+		Namespace: h.Namespace,
+	}, existing)
+
+	if apierrors.IsNotFound(err) {
+		return m.createHookConfigMap(ctx, h)
+	}
+
+	if err != nil {
+		return fmt.Errorf("get hook configmap %s: %w", h.Name, err)
+	}
+
+	// non-mutable — immutable ConfigMap, nothing to update
+	if !h.Mutable {
+		return nil
+	}
+
+	// mutable — update only if args changed
+	var storedCommand, storedArgs []string
+	if err := json.Unmarshal([]byte(existing.Data["command"]), &storedCommand); err != nil {
+		return fmt.Errorf("unmarshal stored command for hook configmap %s: %w", h.Name, err)
+	}
+
+	if err := json.Unmarshal([]byte(existing.Data["args"]), &storedArgs); err != nil {
+		return fmt.Errorf("unmarshal stored args for hook configmap %s: %w", h.Name, err)
+	}
+
+	if hookChecksum(h.Command, h.Args) == hookChecksum(storedCommand, storedArgs) {
+		return nil
+	}
+
+	patch := client.MergeFrom(existing.DeepCopy())
+	commandJSON, err := json.Marshal(h.Command)
+	if err != nil {
+		return fmt.Errorf("marshal command for hook configmap %s: %w", h.Name, err)
+	}
+
+	argsJSON, err := json.Marshal(h.Args)
+	if err != nil {
+		return fmt.Errorf("marshal args for hook configmap %s: %w", h.Name, err)
+	}
+
+	existing.Data["command"] = string(commandJSON)
+	existing.Data["args"] = string(argsJSON)
+
+	if err := m.Client.Patch(ctx, existing, patch); err != nil {
+		return fmt.Errorf("patch hook configmap %s: %w", h.Name, err)
+	}
+
+	return nil
+}
+
+func (m *ManageHooks) createHookConfigMap(ctx context.Context, h hookJobSettings) error {
+	commandJSON, err := json.Marshal(h.Command)
+	if err != nil {
+		return fmt.Errorf("marshal command for hook configmap %s: %w", h.Name, err)
+	}
+
+	argsJSON, err := json.Marshal(h.Args)
+	if err != nil {
+		return fmt.Errorf("marshal args for hook configmap %s: %w", h.Name, err)
+	}
+
+	cm := &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            h.Name,
+			Namespace:       h.Namespace,
+			OwnerReferences: []metav1.OwnerReference{h.OwnerMeta},
+		},
+		Data: map[string]string{
+			"command": string(commandJSON),
+			"args":    string(argsJSON),
+		},
+	}
+
+	if err := m.Client.Create(ctx, cm); err != nil {
+		return fmt.Errorf("create hook configmap %s: %w", h.Name, err)
+	}
+
+	return nil
+}
+
+// readHookConfigMap reads Command and Args from the hook's ConfigMap
+// and returns them along with the computed checksum.
+// Returns NotFound error if the ConfigMap does not exist yet.
+func (m *ManageHooks) readHookConfigMap(ctx context.Context, h hookJobSettings) (command, args []string, checksum string, err error) {
+	cm := &v1.ConfigMap{}
+	if err = m.Client.Get(ctx, types.NamespacedName{
+		Name:      h.Name,
+		Namespace: h.Namespace,
+	}, cm); err != nil {
+		return nil, nil, "", fmt.Errorf("get hook configmap %s: %w", h.Name, err)
+	}
+
+	if err = json.Unmarshal([]byte(cm.Data["command"]), &command); err != nil {
+		return nil, nil, "", fmt.Errorf("unmarshal command from hook configmap %s: %w", h.Name, err)
+	}
+
+	if err = json.Unmarshal([]byte(cm.Data["args"]), &args); err != nil {
+		return nil, nil, "", fmt.Errorf("unmarshal args from hook configmap %s: %w", h.Name, err)
+	}
+
+	checksum = hookChecksum(command, args)
+	return
+}
+
+func (m *ManageHooks) resolveHookFromConfigMap(ctx context.Context, hook hookJobSettings) (hookJobSettings, error) {
+	if hook.Mutable {
+		return hook, nil
+	}
+
+	command, args, checksum, err := m.readHookConfigMap(ctx, hook)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return hook, fmt.Errorf("read hook configmap %s: %w", hook.Name, err)
+	}
+	if err == nil {
+		hook.Command = command
+		hook.Args = args
+		hook.Checksum = checksum
+	}
+
+	return hook, nil
 }
