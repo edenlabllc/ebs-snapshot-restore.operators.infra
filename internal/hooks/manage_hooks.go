@@ -3,14 +3,13 @@ package hooks
 import (
 	"crypto/sha256"
 	"fmt"
-	"golang.org/x/sync/errgroup"
-	"k8s.io/apimachinery/pkg/util/json"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
 	"golang.org/x/net/context"
+	"golang.org/x/sync/errgroup"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -18,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
