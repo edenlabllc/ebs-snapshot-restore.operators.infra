@@ -21,7 +21,7 @@ spec:
               release: db
 
       hooks:
-        preHook:
+        pre-hook:
           events:
             - pre-restore
           command: ["bash", "-c"]
@@ -33,7 +33,7 @@ spec:
           extraSecrets:
             - name: db-cluster-secret
 
-        postHook:
+        post-hook:
           events:
             - post-restore
           command: ["bash", "-c"]
@@ -47,7 +47,7 @@ spec:
             - name: db-cluster-secret
               prefix: DB_CREDENTIALS
 
-        execHook:
+        exec-hook:
           events:
             - post-restore
           command: ["bash", "-c"]
@@ -59,15 +59,23 @@ spec:
           privileges:
             podExec: true
 
-        nodeHook:
+        node-hook:
           events:
             - post-restore
           command: ["bash", "-c"]
           args:
             - |
               set -e
-              fio --filename=/dev/nvme1n1 --rw=read --bs=128k --iodepth=63 \
-                  --numjobs=8 --ioengine=io_uring --direct=1 --name=warmup
+              fio \
+                --filename=/dev/nvme1n1 \
+                --rw=read \
+                --bs=128k \
+                --iodepth=32 \
+                --numjobs=1 \
+                --ioengine=libaio \
+                --direct=1 \
+                --status-interval=10 \
+                --name=volume-initialize
           image: "ubuntu"
           privileges:
             nodeAccess:
