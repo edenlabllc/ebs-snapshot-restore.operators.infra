@@ -624,6 +624,10 @@ func (m *ManageHooks) executeHookJob(ctx context.Context, hook hookJobSettings) 
 		Event:         hook.Event,
 		Image:         hook.Image,
 		RestartPolicy: hook.RestartPolicy,
+		ConfigMapRef: &ebsv1alpha1.ConfigMapReference{
+			Name:      hook.Name,
+			Namespace: hook.Namespace,
+		},
 	}
 
 	// ensure ConfigMap exists with original Command/Args

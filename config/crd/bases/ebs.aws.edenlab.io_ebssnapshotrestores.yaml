@@ -567,6 +567,19 @@ spec:
                               Checksum is the hash of Command and Args used in the last execution.
                               Used together with Mutable to detect changes and trigger a rerun.
                             type: string
+                          configMapRef:
+                            description: |-
+                              ConfigMapRef references the ConfigMap storing the original
+                              Command and Args for this hook.
+                            properties:
+                              name:
+                                type: string
+                              namespace:
+                                type: string
+                            required:
+                            - name
+                            - namespace
+                            type: object
                           event:
                             description: Event is the restore lifecycle point at which
                               this hook was triggered.

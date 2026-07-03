@@ -47,6 +47,12 @@ const (
 	PhaseValidating RestorePhase = "Validating"
 )
 
+// ConfigMapReference is a reference to a ConfigMap.
+type ConfigMapReference struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+}
+
 // RestoreHookStatus reflects the execution result of a single hook job.
 type RestoreHookStatus struct {
 	// Name is the name of the hook Job resource.
@@ -73,6 +79,10 @@ type RestoreHookStatus struct {
 
 	// Succeeded is the number of times this hook job completed successfully.
 	Succeeded int32 `json:"succeeded,omitempty"`
+
+	// ConfigMapRef references the ConfigMap storing the original
+	// Command and Args for this hook.
+	ConfigMapRef *ConfigMapReference `json:"configMapRef,omitempty"`
 }
 
 // RestoreSnapshotRef holds a reference to a VolumeSnapshot associated with a specific PVC.
