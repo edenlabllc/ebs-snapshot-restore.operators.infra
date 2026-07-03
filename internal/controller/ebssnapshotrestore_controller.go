@@ -31,10 +31,7 @@ import (
 
 	ebsv1alpha1 "ebs-snapshot-restore.operators.infra/api/v1alpha1"
 	"ebs-snapshot-restore.operators.infra/internal/hooks"
-	"ebs-snapshot-restore.operators.infra/internal/restore"
-	"ebs-snapshot-restore.operators.infra/internal/scale"
 	"ebs-snapshot-restore.operators.infra/internal/status"
-	"ebs-snapshot-restore.operators.infra/internal/validate"
 )
 
 // EBSSnapshotRestoreReconciler reconciles a EBSSnapshotRestore object
@@ -50,14 +47,24 @@ const (
 // +kubebuilder:rbac:groups=ebs.aws.edenlab.io,resources=ebssnapshotrestores,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ebs.aws.edenlab.io,resources=ebssnapshotrestores/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ebs.aws.edenlab.io,resources=ebssnapshotrestores/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;create
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles;rolebindings,verbs=get;create
+// +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
+// +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list
 
 func (r *EBSSnapshotRestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	reqLogger := logf.FromContext(ctx)
 	statusMgr := status.New(r.Client, r.Scheme, reqLogger)
-	validateMgr := validate.New(r.Client, r.Scheme, reqLogger, statusMgr)
+	//validateMgr := validate.New(r.Client, r.Scheme, reqLogger, statusMgr)
 	hooksMgr := hooks.New(r.Client, r.Scheme, reqLogger, statusMgr)
-	restoreMgr := restore.New(r.Client, r.Scheme, reqLogger, statusMgr)
-	scaleMgr := scale.New(r.Client, r.Scheme, reqLogger, statusMgr)
+	//restoreMgr := restore.New(r.Client, r.Scheme, reqLogger, statusMgr)
+	//scaleMgr := scale.New(r.Client, r.Scheme, reqLogger, statusMgr)
 
 	eSR := &ebsv1alpha1.EBSSnapshotRestore{}
 	if err := r.Client.Get(ctx, req.NamespacedName, eSR); err != nil {
@@ -73,13 +80,13 @@ func (r *EBSSnapshotRestoreReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	if err := statusMgr.SetPhase(ctx, eSR, ebsv1alpha1.PhaseValidating); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	if err := validateMgr.ValidateListSnapshots(ctx, eSR); err != nil {
-		return ctrl.Result{}, err
-	}
+	//if err := statusMgr.SetPhase(ctx, eSR, ebsv1alpha1.PhaseValidating); err != nil {
+	//	return ctrl.Result{}, err
+	//}
+	//
+	//if err := validateMgr.ValidateListSnapshots(ctx, eSR); err != nil {
+	//	return ctrl.Result{}, err
+	//}
 
 	preHooksList, err := hooksMgr.SetupRestoreHooks(ebsv1alpha1.PreRestore, eSR)
 	if err != nil {
@@ -97,29 +104,29 @@ func (r *EBSSnapshotRestoreReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 	}
 
-	if err := statusMgr.SetPhase(ctx, eSR, ebsv1alpha1.PhaseScalingDown); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	if err := scaleMgr.ScaleRestorePlan(ctx, eSR, scale.DownScale); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	if err := statusMgr.SetPhase(ctx, eSR, ebsv1alpha1.PhaseRestoring); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	if err := restoreMgr.RestoreFromPlan(ctx, eSR); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	if err := statusMgr.SetPhase(ctx, eSR, ebsv1alpha1.PhaseScalingUp); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	if err := scaleMgr.ScaleRestorePlan(ctx, eSR, scale.UpScale); err != nil {
-		return ctrl.Result{}, err
-	}
+	//if err := statusMgr.SetPhase(ctx, eSR, ebsv1alpha1.PhaseScalingDown); err != nil {
+	//	return ctrl.Result{}, err
+	//}
+	//
+	//if err := scaleMgr.ScaleRestorePlan(ctx, eSR, scale.DownScale); err != nil {
+	//	return ctrl.Result{}, err
+	//}
+	//
+	//if err := statusMgr.SetPhase(ctx, eSR, ebsv1alpha1.PhaseRestoring); err != nil {
+	//	return ctrl.Result{}, err
+	//}
+	//
+	//if err := restoreMgr.RestoreFromPlan(ctx, eSR); err != nil {
+	//	return ctrl.Result{}, err
+	//}
+	//
+	//if err := statusMgr.SetPhase(ctx, eSR, ebsv1alpha1.PhaseScalingUp); err != nil {
+	//	return ctrl.Result{}, err
+	//}
+	//
+	//if err := scaleMgr.ScaleRestorePlan(ctx, eSR, scale.UpScale); err != nil {
+	//	return ctrl.Result{}, err
+	//}
 
 	postHooksList, err := hooksMgr.SetupRestoreHooks(ebsv1alpha1.PostRestore, eSR)
 	if err != nil {
