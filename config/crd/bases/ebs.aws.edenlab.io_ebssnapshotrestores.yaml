@@ -184,18 +184,13 @@ spec:
                             items:
                               type: string
                             type: array
-                          events:
+                          event:
                             description: Events defines the restore lifecycle points
                               at which this hook is triggered.
-                            items:
-                              description: Event defines the restore lifecycle point
-                                at which a hook job is triggered.
-                              enum:
-                              - pre-restore
-                              - post-restore
-                              type: string
-                            maxItems: 2
-                            type: array
+                            enum:
+                            - pre-restore
+                            - post-restore
+                            type: string
                           extraSecrets:
                             description: |-
                               ExtraSecrets references Secrets whose keys are injected into the hook job
@@ -315,12 +310,12 @@ spec:
                               as failed and will be retried on the next reconcile.
                             type: string
                         required:
-                        - events
+                        - event
                         - image
                         type: object
                         x-kubernetes-validations:
                         - message: mutable cannot be used with pre-restore event
-                          rule: '!self.mutable || !self.events.exists(e, e == ''pre-restore'')'
+                          rule: '!self.mutable || self.event != ''pre-restore'''
                       description: |-
                         Hooks defines a set of hook jobs to execute at specific points during the restore process.
                         Each hook is a Kubernetes Job that runs a container with the specified image and command.
@@ -596,6 +591,11 @@ spec:
                             description: Image is the container image used to run
                               the hook job.
                             type: string
+                          mutable:
+                            description: |-
+                              Mutable indicates whether this hook is allowed to re-execute when
+                              its Command or Args change after a successful run.
+                            type: boolean
                           name:
                             description: Name is the name of the hook Job resource.
                             type: string

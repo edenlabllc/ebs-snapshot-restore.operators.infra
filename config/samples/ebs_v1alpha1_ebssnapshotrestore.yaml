@@ -22,8 +22,7 @@ spec:
 
       hooks:
         pre-hook:
-          events:
-            - pre-restore
+          event: pre-restore
           command: ["bash", "-c"]
           args:
             - |
@@ -34,8 +33,7 @@ spec:
             - name: db-cluster-secret
 
         post-hook:
-          events:
-            - post-restore
+          event: post-restore
           command: ["bash", "-c"]
           args:
             - |
@@ -48,8 +46,7 @@ spec:
               prefix: DB_CREDENTIALS
 
         exec-hook:
-          events:
-            - post-restore
+          event: post-restore
           command: ["bash", "-c"]
           args:
             - |
@@ -60,8 +57,7 @@ spec:
             podExec: true
 
         node-hook:
-          events:
-            - post-restore
+          event: post-restore
           command: ["bash", "-c"]
           args:
             - |

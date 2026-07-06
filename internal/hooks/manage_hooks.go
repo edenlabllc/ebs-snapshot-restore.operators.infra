@@ -53,7 +53,7 @@ type hookJobSettings struct {
 	Args             []string
 	Checksum         string
 	Command          []string
-	Event            ebsv1alpha1.Event
+	Event            ebsv1alpha1.RestoreEvent
 	ExtraSecrets     []ebsv1alpha1.ExtraSecretRef
 	Image            string
 	Mutable          bool
@@ -128,7 +128,7 @@ func perNodeJobName(baseJobName, nodeName string) string {
 	return strings.TrimRight(baseJobName[:maxBase], "-") + "-" + hash
 }
 
-func (m *ManageHooks) SetupRestoreHooks(event ebsv1alpha1.Event, obj *ebsv1alpha1.EBSSnapshotRestore) ([]hookJobSettings, error) {
+func (m *ManageHooks) SetupRestoreHooks(event ebsv1alpha1.RestoreEvent, obj *ebsv1alpha1.EBSSnapshotRestore) ([]hookJobSettings, error) {
 	var hJS []hookJobSettings
 
 	ownerGVK, err := apiutil.GVKForObject(obj, m.Scheme)
@@ -163,25 +163,23 @@ func (m *ManageHooks) SetupRestoreHooks(event ebsv1alpha1.Event, obj *ebsv1alpha
 
 		for _, hookName := range hookNames {
 			hookSettings := plan.Hooks[hookName]
-			for _, e := range hookSettings.Events {
-				if e == event {
-					hJS = append(hJS, hookJobSettings{
-						Name:          hookJobName(planName, hookName),
-						Namespace:     obj.GetNamespace(),
-						Args:          hookSettings.Args,
-						Checksum:      hookChecksum(hookSettings.Command, hookSettings.Args),
-						Command:       hookSettings.Command,
-						Event:         event,
-						ExtraSecrets:  hookSettings.ExtraSecrets,
-						Image:         hookSettings.Image,
-						Mutable:       hookSettings.Mutable,
-						OwnerMeta:     ownerRef,
-						PlanName:      planName,
-						Privileges:    hookSettings.Privileges,
-						RestartPolicy: hookSettings.RestartPolicy,
-						Timeout:       hookSettings.Timeout,
-					})
-				}
+			if hookSettings.Event == event {
+				hJS = append(hJS, hookJobSettings{
+					Name:          hookJobName(planName, hookName),
+					Namespace:     obj.GetNamespace(),
+					Args:          hookSettings.Args,
+					Checksum:      hookChecksum(hookSettings.Command, hookSettings.Args),
+					Command:       hookSettings.Command,
+					Event:         event,
+					ExtraSecrets:  hookSettings.ExtraSecrets,
+					Image:         hookSettings.Image,
+					Mutable:       hookSettings.Mutable,
+					OwnerMeta:     ownerRef,
+					PlanName:      planName,
+					Privileges:    hookSettings.Privileges,
+					RestartPolicy: hookSettings.RestartPolicy,
+					Timeout:       hookSettings.Timeout,
+				})
 			}
 		}
 	}
@@ -234,7 +232,7 @@ func (m *ManageHooks) RunHooks(ctx context.Context, hooks []hookJobSettings, obj
 	return nil
 }
 
-func (m *ManageHooks) logMutationStatus(obj *ebsv1alpha1.EBSSnapshotRestore, planName, hookName string, event ebsv1alpha1.Event, mutable bool, currentChecksum string) {
+func (m *ManageHooks) logMutationStatus(obj *ebsv1alpha1.EBSSnapshotRestore, planName, hookName string, event ebsv1alpha1.RestoreEvent, mutable bool, currentChecksum string) {
 	if !mutable {
 		return
 	}
@@ -260,7 +258,7 @@ func (m *ManageHooks) logMutationStatus(obj *ebsv1alpha1.EBSSnapshotRestore, pla
 }
 
 func hookSkipReason(obj *ebsv1alpha1.EBSSnapshotRestore, planName, hookName string,
-	event ebsv1alpha1.Event, mutable bool, checksum string) (skip bool, reason string) {
+	event ebsv1alpha1.RestoreEvent, mutable bool, checksum string) (skip bool, reason string) {
 	plan, ok := obj.Status.RestorePlans[planName]
 	if !ok {
 		// first reconcile for this plan — nothing has ever run, so this hook must run
@@ -623,6 +621,7 @@ func (m *ManageHooks) executeHookJob(ctx context.Context, hook hookJobSettings) 
 		Namespace:     hook.Namespace,
 		Event:         hook.Event,
 		Image:         hook.Image,
+		Mutable:       hook.Mutable,
 		RestartPolicy: hook.RestartPolicy,
 		ConfigMapRef: &ebsv1alpha1.ConfigMapReference{
 			Name:      hook.Name,

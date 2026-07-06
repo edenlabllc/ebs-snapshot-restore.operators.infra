@@ -195,11 +195,6 @@ func (in *HookSettings) DeepCopyInto(out *HookSettings) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
-	if in.Events != nil {
-		in, out := &in.Events, &out.Events
-		*out = make([]Event, len(*in))
-		copy(*out, *in)
-	}
 	if in.ExtraSecrets != nil {
 		in, out := &in.ExtraSecrets, &out.ExtraSecrets
 		*out = make([]ExtraSecretRef, len(*in))

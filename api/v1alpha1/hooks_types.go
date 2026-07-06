@@ -4,14 +4,14 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // Event defines the restore lifecycle point at which a hook job is triggered.
 // +kubebuilder:validation:Enum=pre-restore;post-restore
-type Event string
+type RestoreEvent string
 
 const (
 	// PreRestore triggers the hook before the restore process begins.
-	PreRestore Event = "pre-restore"
+	PreRestore RestoreEvent = "pre-restore"
 
 	// PostRestore triggers the hook after the restore process completes.
-	PostRestore Event = "post-restore"
+	PostRestore RestoreEvent = "post-restore"
 )
 
 // Policy defines the restart policy for a hook job container.
@@ -62,7 +62,7 @@ type HookPrivileges struct {
 	NodeAccess *NodeAccessPrivilege `json:"nodeAccess,omitempty"`
 }
 
-// +kubebuilder:validation:XValidation:rule="!self.mutable || !self.events.exists(e, e == 'pre-restore')",message="mutable cannot be used with pre-restore event"
+// +kubebuilder:validation:XValidation:rule="!self.mutable || self.event != 'pre-restore'",message="mutable cannot be used with pre-restore event"
 type HookSettings struct {
 	// Args are the arguments passed to the container command.
 	Args []string `json:"args,omitempty"`
@@ -72,8 +72,7 @@ type HookSettings struct {
 
 	// Events defines the restore lifecycle points at which this hook is triggered.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MaxItems=2
-	Events []Event `json:"events"`
+	Event RestoreEvent `json:"event"`
 
 	// ExtraSecrets references Secrets whose keys are injected into the hook job
 	// container as environment variables, each prefixed to indicate origin.

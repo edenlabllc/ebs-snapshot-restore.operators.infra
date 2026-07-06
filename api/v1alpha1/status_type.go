@@ -66,13 +66,17 @@ type RestoreHookStatus struct {
 	Checksum string `json:"checksum,omitempty"`
 
 	// Event is the restore lifecycle point at which this hook was triggered.
-	Event Event `json:"event,omitempty"`
+	Event RestoreEvent `json:"event,omitempty"`
 
 	// Failed is the number of times this hook job failed.
 	Failed int32 `json:"failed,omitempty"`
 
 	// Image is the container image used to run the hook job.
 	Image string `json:"image,omitempty"`
+
+	// Mutable indicates whether this hook is allowed to re-execute when
+	// its Command or Args change after a successful run.
+	Mutable bool `json:"mutable,omitempty"`
 
 	// RestartPolicy is the restart policy applied to the hook job container.
 	RestartPolicy Policy `json:"restartPolicy,omitempty"`
