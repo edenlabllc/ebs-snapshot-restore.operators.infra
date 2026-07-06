@@ -184,17 +184,13 @@ spec:
                             items:
                               type: string
                             type: array
-                          events:
+                          event:
                             description: Events defines the restore lifecycle points
                               at which this hook is triggered.
-                            items:
-                              description: Event defines the restore lifecycle point
-                                at which a hook job is triggered.
-                              enum:
-                              - pre-restore
-                              - post-restore
-                              type: string
-                            type: array
+                            enum:
+                            - pre-restore
+                            - post-restore
+                            type: string
                           extraSecrets:
                             description: |-
                               ExtraSecrets references Secrets whose keys are injected into the hook job
@@ -229,6 +225,76 @@ spec:
                               stored in status; on mismatch, the hook is treated as not succeeded and reruns.
                               Only honored for hooks triggered on the post-restore event; ignored otherwise.
                             type: boolean
+                          privileges:
+                            description: |-
+                              Privileges declares elevated access this hook needs (pod exec, raw
+                              node/disk access). Leave unset for a standard, unprivileged Job.
+                            properties:
+                              nodeAccess:
+                                description: |-
+                                  NodeAccess pins the hook job to nodes matching the selector and grants
+                                  raw host-level access (hostPID + privileged SecurityContext).
+                                properties:
+                                  nodeSelector:
+                                    description: NodeSelector selects the nodes this
+                                      hook must run on.
+                                    properties:
+                                      matchExpressions:
+                                        description: matchExpressions is a list of
+                                          label selector requirements. The requirements
+                                          are ANDed.
+                                        items:
+                                          description: |-
+                                            A label selector requirement is a selector that contains values, a key, and an operator that
+                                            relates the key and values.
+                                          properties:
+                                            key:
+                                              description: key is the label key that
+                                                the selector applies to.
+                                              type: string
+                                            operator:
+                                              description: |-
+                                                operator represents a key's relationship to a set of values.
+                                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                                              type: string
+                                            values:
+                                              description: |-
+                                                values is an array of string values. If the operator is In or NotIn,
+                                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                                the values array must be empty. This array is replaced during a strategic
+                                                merge patch.
+                                              items:
+                                                type: string
+                                              type: array
+                                              x-kubernetes-list-type: atomic
+                                          required:
+                                          - key
+                                          - operator
+                                          type: object
+                                        type: array
+                                        x-kubernetes-list-type: atomic
+                                      matchLabels:
+                                        additionalProperties:
+                                          type: string
+                                        description: |-
+                                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                        type: object
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                required:
+                                - nodeSelector
+                                type: object
+                              podExec:
+                                description: |-
+                                  PodExec lets the hook job kubectl-exec into pods in the same namespace.
+                                  The operator provisions a Role and RoleBinding scoped to pods/exec,
+                                  attached to the hook's own ServiceAccount. RBAC has no selector-scoped
+                                  permissions — the hook's command is responsible for only touching
+                                  the pods it means to.
+                                type: boolean
+                            type: object
                           restartPolicy:
                             description: |-
                               RestartPolicy defines the restart behavior of the hook job container.
@@ -237,10 +303,19 @@ spec:
                             - Never
                             - OnFailure
                             type: string
+                          timeout:
+                            description: |-
+                              Timeout defines the maximum time to wait for the hook job to complete.
+                              If not set, defaults to 10 minutes. When exceeded, the hook is treated
+                              as failed and will be retried on the next reconcile.
+                            type: string
                         required:
-                        - events
+                        - event
                         - image
                         type: object
+                        x-kubernetes-validations:
+                        - message: mutable cannot be used with pre-restore event
+                          rule: '!self.mutable || self.event != ''pre-restore'''
                       description: |-
                         Hooks defines a set of hook jobs to execute at specific points during the restore process.
                         Each hook is a Kubernetes Job that runs a container with the specified image and command.
@@ -487,6 +562,19 @@ spec:
                               Checksum is the hash of Command and Args used in the last execution.
                               Used together with Mutable to detect changes and trigger a rerun.
                             type: string
+                          configMapRef:
+                            description: |-
+                              ConfigMapRef references the ConfigMap storing the original
+                              Command and Args for this hook.
+                            properties:
+                              name:
+                                type: string
+                              namespace:
+                                type: string
+                            required:
+                            - name
+                            - namespace
+                            type: object
                           event:
                             description: Event is the restore lifecycle point at which
                               this hook was triggered.
@@ -503,6 +591,11 @@ spec:
                             description: Image is the container image used to run
                               the hook job.
                             type: string
+                          mutable:
+                            description: |-
+                              Mutable indicates whether this hook is allowed to re-execute when
+                              its Command or Args change after a successful run.
+                            type: boolean
                           name:
                             description: Name is the name of the hook Job resource.
                             type: string

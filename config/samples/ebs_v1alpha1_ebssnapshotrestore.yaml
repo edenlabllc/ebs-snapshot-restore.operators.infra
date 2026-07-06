@@ -21,30 +21,63 @@ spec:
               release: db
 
       hooks:
-        preHook:
-          events:
-            - pre-restore
-          command: [ "bash", "-c" ]
+        pre-hook:
+          event: pre-restore
+          command: ["bash", "-c"]
           args:
             - |
-              set  -e
+              set -e
               echo "Hello"
           image: "ubuntu"
           extraSecrets:
             - name: db-cluster-secret
-        postHook:
-          events:
-            - post-restore
-          command: [ "bash", "-c" ]
+
+        post-hook:
+          event: post-restore
+          command: ["bash", "-c"]
           args:
             - |
-              set  -e
+              set -e
               env | grep "DB_CREDENTIALS"
           image: "ubuntu"
           mutable: true
           extraSecrets:
             - name: db-cluster-secret
               prefix: DB_CREDENTIALS
+
+        exec-hook:
+          event: post-restore
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -e
+              kubectl exec -n db $(kubectl get pods -n db -l release=db -o jsonpath='{.items[0].metadata.name}') -- echo "hello from pod"
+          image: "bitnami/kubectl"
+          privileges:
+            podExec: true
+
+        node-hook:
+          event: post-restore
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -e
+              fio \
+                --filename=/dev/nvme1n1 \
+                --rw=read \
+                --bs=128k \
+                --iodepth=32 \
+                --numjobs=1 \
+                --ioengine=libaio \
+                --direct=1 \
+                --status-interval=10 \
+                --name=volume-initialize
+          image: "ubuntu"
+          privileges:
+            nodeAccess:
+              nodeSelector:
+                matchLabels:
+                  node-role: db-node
 
       operators:
         - name: operator
