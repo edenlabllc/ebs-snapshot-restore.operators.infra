@@ -131,3 +131,24 @@ func (m *ManageStatus) SetRestoreFromPlan(ctx context.Context, obj *ebsv1alpha1.
 		st.RestorePlans[planName] = existsPlan
 	})
 }
+
+func (m *ManageStatus) SetHooksRestoreFromPlan(ctx context.Context, obj *ebsv1alpha1.EBSSnapshotRestore,
+	planName string, hook ebsv1alpha1.RestoreHookStatus) error {
+	return m.Patch(ctx, obj, "SetHooksFromPlan", func(st *ebsv1alpha1.EBSSnapshotRestoreStatus) {
+		if st.RestorePlans == nil {
+			st.RestorePlans = make(map[string]ebsv1alpha1.RestorePlanStatus)
+		}
+
+		plan := st.RestorePlans[planName]
+		for i, h := range plan.Hooks {
+			if h.Name == hook.Name && h.Event == hook.Event {
+				plan.Hooks[i] = hook
+				st.RestorePlans[planName] = plan
+				return
+			}
+		}
+
+		plan.Hooks = append(plan.Hooks, hook)
+		st.RestorePlans[planName] = plan
+	})
+}
