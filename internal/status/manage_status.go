@@ -26,7 +26,6 @@ func New(c client.Client, r *runtime.Scheme, l logr.Logger) *ManageStatus {
 	return &ManageStatus{Client: c, Scheme: r, Logger: l.WithName("Status")}
 }
 
-// cmp options for comparing LinkerdTrustRotationStatus objects.
 // We ignore volatile fields like LastUpdated to avoid infinite patches.
 func statusCmpOptions() []cmp.Option {
 	return []cmp.Option{
